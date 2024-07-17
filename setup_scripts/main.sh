@@ -47,15 +47,9 @@ source neovim.sh
 
 source laptop_utils.sh
 
-source neovim.sh
-
 source nosetuppackages.sh
 
-source laptop_utils.sh
-
 source audio.sh
-
-source terminal.sh
 
 source hyprland.sh
 
