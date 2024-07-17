@@ -1,10 +1,8 @@
 
 
-
-source ask_install_package
+source ask_install_package.sh
 
 LOGIN_MANAGER="sddm"
-
 
 ask_install_package $LOGIN_MANAGER
 

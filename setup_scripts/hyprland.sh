@@ -7,7 +7,8 @@ if  [ "$choice" != "y" ]; then
 fi
 
 echo "Downloading hyprland-git version"
-yay -S  hyprland-git
+yay -S  hyprland
+# yay -S  hyprland-git
 
 echo "Downloading qt-libraries wayland support"
 yay -S qt5-wayland qt6-wayland

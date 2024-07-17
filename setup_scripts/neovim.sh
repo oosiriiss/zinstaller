@@ -1,5 +1,5 @@
 
-source ask_install_package
+source ask_install_package.sh
 
 NEOVIM_CONFIG_URL="https://github.com/oosiriiss/nvim-config"
 ask_install_package neovim
