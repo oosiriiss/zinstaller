@@ -1,6 +1,6 @@
 #!/bin/bash
 
-get_cuurent_power_plan() {
+get_current_power_plan() {
 	currentplan=$(asusctl profile -p | tail -1 | awk '{print $NF}')
 }
 
@@ -9,7 +9,7 @@ if [[ "$1" == "next" ]]; then
 	asusctl profile -n
 fi
 
-get_cuurent_power_plan
+get_current_power_plan
 
 # MAIN monitor.. idk how this would work with multiple monitors
 MONITOR=$(hyprctl monitors | grep "Monitor" | cut --delimiter=" " -f 2)
