@@ -1,6 +1,6 @@
 
 
-currentInput=$(pactl info | grep "Default Source" | cut -f3 -d" ")
+currentInput=$(pactl get-default-source)
 
 if [[ "$1" == "mt" ]]; then 
 	pactl set-source-mute $currentInput toggle
