@@ -59,6 +59,8 @@ source terminal.sh
 
 source hyprland.sh
 
+source powertop.sh
+
 
 ################################################## Copying dotfiles
 
