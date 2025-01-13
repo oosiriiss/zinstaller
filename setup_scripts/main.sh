@@ -20,8 +20,9 @@ echo "	1. git (signed in)"
 echo "	2. run as user not root"
 echo "	3. yay installed"
 
+echo "Press enter"
+read choice 
 
-clear
 
 ################################################### Pacman sync
 
@@ -47,15 +48,7 @@ source neovim.sh
 
 source laptop_utils.sh
 
-source neovim.sh
-
-source nosetuppackages.sh
-
-source laptop_utils.sh
-
 source audio.sh
-
-source terminal.sh
 
 source hyprland.sh
 
