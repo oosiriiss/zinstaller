@@ -1,0 +1,90 @@
+configuration {
+	
+	window, run, drun, ssh, combi {
+
+	fallback-icon: "/home/oosiriiss/.config/default_image.png";
+	}
+
+}
+* {
+	corner-radius: 12px;
+	
+	font: "Roboto 13";
+
+	padding: 0px;
+	margin: 0px;
+
+	normal-background:transparent;
+	alternate-normal-background:transparent;
+}
+
+window {
+	background-color:#000000ba;
+	transparency: "real";
+	location: center;
+	fullscreen:true;
+	border-radius: @corner-radius;
+	padding: 10% 15% 10% 15%;
+}
+scrollbar {
+	background: #ffffffff;
+	handle-color :#af0000ff;
+}
+mainbox {
+	background-color:#0000008f;
+	padding:18px;
+	spacing:8px;
+	border-radius: @corner-radius;
+}
+
+inputbar {
+	background-color: #575757a0;
+	padding:12px;
+	border-radius: @corner-radius;
+	margin: 0 10% 0 10%;
+
+	border: 3px;
+	border-radius: @corner-radius;
+	border-color: #575757a0;
+
+	padding: 8px;
+	spacing: 8px;
+	
+	children: [prompt,entry];
+}
+
+prompt {
+	text-color: #63abf2ff; 
+}
+
+entry {
+	placeholder: "Search...";
+	placeholder-color: #878787ff;
+	text-color:#ffffffff;
+}
+listview {
+	padding:6px;
+	columns:4;
+	spacing:8px;
+	fixed-columns:true;
+}
+element {
+	padding:8px;
+	border-radius: @corner-radius;
+	orientation:vertical;
+	horizontal-align: 0.5;
+	children: [element-icon, element-text];
+}
+element-icon {
+	size: 4em;
+	vertical-align: 0.5;
+	horizontal-align: 0.5;
+}
+element-text {
+	horizontal-align:0.5;
+	text-color:#ffffffff;
+	background:#ffffffff;
+}
+element selected normal, element selected active {
+	background-color:#f07171ff;
+}

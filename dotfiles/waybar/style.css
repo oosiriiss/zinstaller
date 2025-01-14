@@ -1,0 +1,152 @@
+/*https://github.com/Alexays/Waybar/wiki/Styling
+https://github.com/Alexays/Waybar/wiki/Styling
+https://github.com/Alexays/Waybar/wiki/Styling
+https://github.com/Alexays/Waybar/wiki/Styling
+https://github.com/Alexays/Waybar/wiki/Styling
+https://github.com/Alexays/Waybar/wiki/Styling
+https://github.com/Alexays/Waybar/wiki/Styling
+https://github.com/Alexays/Waybar/wiki/Styling
+https://github.com/Alexays/Waybar/wiki/Styling
+https://github.com/Alexays/Waybar/wiki/Styling
+https://github.com/Alexays/Waybar/wiki/Styling
+https://github.com/Alexays/Waybar/wiki/Styling
+https://github.com/Alexays/Waybar/wiki/Styling
+https://github.com/Alexays/Waybar/wiki/Styling
+https://github.com/Alexays/Waybar/wiki/Styling  
+
+ */
+* {
+	font-family: "JetBrains Mono NL";
+	font-size: 12px;
+	margin: 0px;
+	padding: 0px;
+	min-height:0px;
+}
+
+window#waybar {
+	border-radius: 10px;
+	background: rgba(0,0,0,0.5);
+	/*background: linear-gradient(180deg, rgba(0, 0, 0, 0.7) 0%, rgba(0, 0, 0, 0.3) 100%);*/
+	/* box shadow going down*/
+	box-shadow: 0px 0px 10px -10px rgba(0, 0, 0, 0.5);
+}
+
+#workspaces {
+	margin: 0;
+	font-size: 5px;
+}
+
+#workspaces button {
+	border-radius: 5px;
+	color: white;
+}
+
+#workspaces button box label {
+	font-family: "Roboto";
+	font-weight:900;
+	margin: 0;
+	padding: 0px;
+}
+
+#workspaces button:not(:last-child) {
+	margin-right: 5px;
+}
+
+#workspaces button.active {
+	border-color: #aaaaaa;
+	color: #bf61ff;
+}
+
+#workspaces button.focused {
+	border-color: #bf61ff;
+}
+
+#workspaces button.hover {
+	border-color: #aaaaaa;
+	background-color: #000000;
+}
+
+#workspaces button.urgent {}
+
+.modules-left,
+.modules-center,
+.modules-right {
+
+	margin: 5px;
+	border-radius: 10px;
+	padding: 0px 8px 0px 8px;
+	background: rgba(0, 0, 0, 0.5);
+}
+
+.modules-left {
+	background: transparent;
+}
+
+.modules-center {}
+
+.modules-left {}
+
+#battery icon {
+	color: #bf61ff;
+}
+
+#battery.charging {
+	color: #a3be8c;
+}
+
+#battery.warning:not(.charging) {
+	color: #bf616a;
+}
+
+#network.disconnected {
+	color: #bf616a;
+}
+
+#clock,
+#battery,
+#network,
+#pulseaudio,
+#tray,
+#workspaces,
+#window,
+#custom-power_plan,
+#backlight {
+	border-radius: 8px;
+	color: #d8dee9;
+}
+
+#clock {
+	font-family: "JetBrains Mono NL";
+	font-size: 13px;
+	font-weight: 900;
+}
+
+#network {
+	font-weight: 600;
+}
+
+#window {
+	font-family: "JetBrains Mono";
+	font-weight: 900;
+}
+
+#custom-power_plan.quiet {
+	color: #00aa00;
+}
+
+#custom-power_plan.balanced {
+	color: #8888ff;
+}
+
+#custom-power_plan.performance {
+	color: #aa6600;
+}
+
+#custom-spacer {
+
+	color: #ffffff;
+
+}
+#custom-notification {
+	color: #ffffff;
+}
