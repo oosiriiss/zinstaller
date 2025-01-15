@@ -1,0 +1,16 @@
+GRUB
+sddm
+pulseaudio
+pavucontrol
+waybar
+hyprpaper
+rofi-lbonn-wayland-git
+wlr-randr
+swaync
+brightnessctl
+nautilus
+nvidia-dkms
+egl-wayland
+hyprland-git
+qt5-wayland
+qt6-wayland

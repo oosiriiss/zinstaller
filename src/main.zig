@@ -16,18 +16,54 @@ const Package = struct {
     pub fn print(self: Package) void {
         std.debug.print("Package {{\n name: \"{s}\",\n description: \"{s}\",\n", .{ self.name, self.description });
         if (self.dependencies) |deps| {
-            std.debug.print("dependencies: {{\n", .{});
-            for (deps) |dep| {
-                std.debug.print("\t", .{});
-                dep.print();
-            }
-            std.debug.print("}}\n", .{});
+            std.debug.print("dependencies: {d}", .{deps.len});
         }
-        std.debug.print("}}\n", .{});
     }
 };
 
+fn dumpPackagesToFile(packages: *const std.ArrayList(Package)) !void {
+    var file = try std.fs.cwd().createFile("packages.list", .{});
+    defer file.close();
+
+    var fileWriter = std.io.bufferedWriter(file.writer());
+    var out = fileWriter.writer();
+
+    for (packages.items) |package| {
+        try out.print("{s}\n", .{package.name});
+    }
+    try fileWriter.flush();
+}
+fn exists(arr: *const std.ArrayList(Package), searched: Package) bool {
+    for (arr.items) |package| {
+        if (std.mem.eql(u8, package.name, searched.name))
+            return true;
+    }
+    return false;
+}
+
+fn flattenPackagesArray(packages: []const Package) !std.ArrayList(Package) {
+    var flattenedArr = std.ArrayList(Package).init(std.heap.page_allocator);
+
+    for (packages) |package| {
+        if (!exists(&flattenedArr, package))
+            try flattenedArr.append(package);
+
+        if (package.dependencies) |deps| {
+            for (deps) |dependency| {
+                // Dependency is not added
+                if (!exists(&flattenedArr, dependency)) {
+                    try flattenedArr.append(dependency);
+                }
+            }
+        }
+    }
+
+    return flattenedArr;
+}
+
 pub fn main() !void {
+
+    // List of packages
     const packages = comptime [_]Package{
         Package.init("GRUB", "Bootloader"),                                                       Package.init("sddm", "Login manager"),
         Package.init("pulseaudio", "Sound server, middleware between applications and hardware"), Package.init("pavucontrol", "Sound mixer - Pulse audio volume control"),
@@ -40,11 +76,11 @@ pub fn main() !void {
             Package.init("qt6-wayland", "Qt6 with wayland support"),
         }),
     };
-
-    var file = try std.fs.Dir.createFile("packages.list",std.fs.File.CreateFlags {.read = true,}) catch return;
-    file.
-
-    for (packages) |package| {
-        package.print();
-    }
+    // Flatteing packages list (adding dependencies to the main list)
+    const flattened = flattenPackagesArray(&packages) catch |err| {
+        std.debug.print("Couldn't flatten packages array: {}\n", .{err});
+        return;
+    };
+    defer flattened.deinit();
+    try dumpPackagesToFile(&flattened);
 }
