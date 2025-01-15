@@ -1,4 +1,5 @@
 const std = @import("std");
+const linux = std.os.linux;
 
 const Package = struct {
     name: []const u8,
@@ -28,15 +29,20 @@ const Package = struct {
 
 pub fn main() !void {
     const packages = comptime [_]Package{
-        Package.init("GRUB", "Bootloader"),
-        Package.init("sddm", "Login manager"),
-        Package.init("pulseaudio", "Sound server, middleware between applications and hardware"),
-        Package.init("pavucontrol", "Sound mixer - Pulse audio volume control"),
+        Package.init("GRUB", "Bootloader"),                                                       Package.init("sddm", "Login manager"),
+        Package.init("pulseaudio", "Sound server, middleware between applications and hardware"), Package.init("pavucontrol", "Sound mixer - Pulse audio volume control"),
+        Package.init("waybar", "Wyland top bar"),                                                 Package.init("hyprpaper", "Hyprland wallpapers"),
+        Package.init("rofi-lbonn-wayland-git", "Rofi wayland support"),                           Package.init("wlr-randr", "randr for wayland"),
+        Package.init("swaync", "Notifications"),                                                  Package.init("brightnessctl", "Changing screen brightness"),
+        Package.init("nautilus", "File manager/explorer"),                                        Package.initWithDependencies("nvidia-dkms", "Nvidia graphics drivers", &[_]Package{Package.init("egl-wayland", "Idk some opengl nvidia support shit")}),
         Package.initWithDependencies("hyprland-git", "Window manager", &[_]Package{
             Package.init("qt5-wayland", "Qt5 with wayland support"),
             Package.init("qt6-wayland", "Qt6 with wayland support"),
         }),
     };
+
+    var file = try std.fs.Dir.createFile("packages.list",std.fs.File.CreateFlags {.read = true,}) catch return;
+    file.
 
     for (packages) |package| {
         package.print();

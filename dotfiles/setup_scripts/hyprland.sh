@@ -49,7 +49,6 @@ if [ "$choice" = "y" ]; then
       sudo grub-mkconfig -o /boot/grub/grub.cfg    
    fi
 
-
    ############################## MKINITCPIO MODULES #######################################
 
       LINE_NUMBER=$(grep -n   "^MODULES" /etc/mkinitcpio.conf | gawk '{print $1}' FS=":")
@@ -75,11 +74,8 @@ if [ "$choice" = "y" ]; then
       # Replacing the line in 
       sudo sed -i "${LINE_NUMBER}s/^.*$/${LINE}/" /etc/mkinitcpio.conf
 
-
       #Regenerating initcpio
-
       sudo mkinitcpio -P
-
 
       ################################## HYPRLAND ENV VARS ##########################
 

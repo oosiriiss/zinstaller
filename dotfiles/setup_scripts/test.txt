@@ -1,7 +1,4 @@
-adsadasda
 
-
-dadadada 
 env = SOME_ETST_ENV,x
 
 env = LIBVA_DRIVER_NAME,nvidia
