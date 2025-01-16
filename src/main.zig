@@ -83,4 +83,7 @@ pub fn main() !void {
     };
     defer flattened.deinit();
     try dumpPackagesToFile(&flattened);
+
+    const proc = try std.process.Child.run(.{ .allocator = std.heap.page_allocator, .argv = &.{"dir.exe"}, .cwd_dir = std.fs.cwd() });
+    _ = proc;
 }
