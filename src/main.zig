@@ -13,16 +13,24 @@ const Package = struct {
     pub fn initWithDependencies(name: []const u8, description: []const u8, dependencies: []const Package) Package {
         return .{ .name = name, .description = description, .dependencies = dependencies };
     }
-    pub fn print(self: Package) void {
-        std.debug.print("Package {{\n name: \"{s}\",\n description: \"{s}\",\n", .{ self.name, self.description });
+    pub fn print(self: Package, writer: *const std.fs.File.Writer) !void {
+        try writer.print("Package {{ name: \"{s}\",\n description: \"{s}\",\n", .{ self.name, self.description });
         if (self.dependencies) |deps| {
-            std.debug.print("dependencies: {d}", .{deps.len});
+            try writer.print("dependencies: {d}", .{deps.len});
         }
     }
 };
 
+fn printEnumeratedPackages(packages: []const Package, writer: *const std.fs.File.Writer) !void {
+    for (packages.len, packages) |i, package| {
+        try writer.write("{d}", .{i});
+        try package.print(writer);
+        try writer.writer("\n");
+    }
+}
+
 fn dumpPackagesToFile(packages: *const std.ArrayList(Package)) !void {
-    var file = try std.fs.cwd().createFile("packages.list", .{});
+    var file = try std.fs.cwd().createFile("packages.list", .{ .truncate = true });
     defer file.close();
 
     var fileWriter = std.io.bufferedWriter(file.writer());
@@ -30,8 +38,8 @@ fn dumpPackagesToFile(packages: *const std.ArrayList(Package)) !void {
 
     for (packages.items) |package| {
         try out.print("{s}\n", .{package.name});
+        try fileWriter.flush();
     }
-    try fileWriter.flush();
 }
 fn exists(arr: *const std.ArrayList(Package), searched: Package) bool {
     for (arr.items) |package| {
@@ -81,6 +89,32 @@ fn extractPackageNames(packages: *const std.ArrayList(Package)) ![]const u8 {
     return str;
 }
 
+fn runPacmanSync(ostream: *const std.fs.File.Writer) !void {
+    try ostream.print("Synchronizing pacman\n", .{});
+    var syncResult = std.process.Child.init(&.{ "pacman", "-Syu", "--noconfirm" }, std.heap.page_allocator);
+
+    const r = try syncResult.spawnAndWait();
+
+    if (r.Exited != 0)
+        return error.PacmanError;
+}
+
+fn downloadSelectedPackages(packages: *const std.ArrayList(Package), ostream: *const std.fs.File.Writer) !void {
+    const packagesStr = try extractPackageNames(packages);
+    errdefer std.heap.page_allocator.free(packagesStr);
+
+    try ostream.print("\n\nDownloading packages: {s}\n\n", .{packagesStr});
+
+    const command = [_][]const u8{ "pacman", "-S", packagesStr };
+
+    var installResult = std.process.Child.init(&command, std.heap.page_allocator);
+
+    const r = try installResult.spawnAndWait();
+
+    if (r.Exited != 0)
+        return error.PacmanError;
+}
+
 pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
 
@@ -98,8 +132,6 @@ pub fn main() !void {
         }),
     };
 
-    // Selecting packages
-
     // Flatteing packages list (adding dependencies to the main list)
     const flattened = flattenPackagesArray(&packages) catch |err| {
         std.debug.print("Couldn't flatten packages array: {any}\n", .{err});
@@ -107,34 +139,17 @@ pub fn main() !void {
     };
     defer flattened.deinit();
 
-    try dumpPackagesToFile(&flattened);
-
-    try stdout.print("Synchronizing pacman\n", .{});
-    var syncResult = std.process.Child.init(&.{ "pacman", "-Syu", "--noconfirm" }, std.heap.page_allocator);
-
-    _ = syncResult.spawnAndWait() catch |err| {
-        std.debug.print("Couldn't pacman -Syu: {any}", .{err});
+    dumpPackagesToFile(&flattened) catch |err| {
+        std.debug.print("Dumping packages to file failed! {any}", .{err});
         return;
     };
 
-    syncResult.stdout_behavior = std.process.Child.StdIo.Pipe;
-    syncResult.stdin_behavior = std.process.Child.StdIo.Pipe;
-
-    //std.debug.print("Synchronization Result: {d}\nSynchronization stdout: {s}\nSynchronization stderr: {s}", .{ syncResult.term.Exited, syncResult.stdout, syncResult.stderr });
-
-    const packagesStr = extractPackageNames(&flattened) catch |err| {
-        std.debug.print("There was an error when extracting Packagae names: {any}", .{err});
+    runPacmanSync(&stdout) catch |err| {
+        std.debug.print("Couldn't run pacman sync: {any}", .{err});
         return;
     };
-
-    defer std.heap.page_allocator.free(packagesStr);
-
-    const command = [_][]const u8{ "pacman", "-S", packagesStr };
-
-    std.debug.print("Downloading packages: {s}", .{packagesStr});
-    const installResult = std.process.Child.run(.{ .allocator = std.heap.page_allocator, .argv = &command }) catch |err| {
-        std.debug.print("Couldn't pacman -Syu: {any}", .{err});
+    downloadSelectedPackages(&flattened, &stdout) catch |err| {
+        std.debug.print("Downllading selected packages failed {any}", .{err});
         return;
     };
-    std.debug.print("Installation stdout: {s}\nInstallation stderr: {s}", .{ installResult.stdout, installResult.stderr });
 }
