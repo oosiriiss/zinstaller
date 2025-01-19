@@ -14,19 +14,80 @@ const Package = struct {
         return .{ .name = name, .description = description, .dependencies = dependencies };
     }
     pub fn print(self: Package, writer: *const std.fs.File.Writer) !void {
-        try writer.print("Package {{ name: \"{s}\",\n description: \"{s}\",\n", .{ self.name, self.description });
-        if (self.dependencies) |deps| {
-            try writer.print("dependencies: {d}", .{deps.len});
-        }
+        try writer.print("{s} - {s}\n", .{ self.name, self.description });
     }
 };
 
 fn printEnumeratedPackages(packages: []const Package, writer: *const std.fs.File.Writer) !void {
-    for (packages.len, packages) |i, package| {
-        try writer.write("{d}", .{i});
-        try package.print(writer);
-        try writer.writer("\n");
+    if (packages.len == 0)
+        return;
+
+    var stack = std.ArrayList(struct { package: Package, depth: u8 }).init(std.heap.page_allocator);
+    for (packages) |package| {
+        try stack.append(.{ .package = package, .depth = 0 });
     }
+
+    var packageNumber: usize = 1;
+    const maxPackageNumberDigits = std.math.log10(packages.len);
+
+    while (stack.items.len > 0) {
+        const tmp = stack.pop();
+        const currentPackage = tmp.package;
+        const currentDepth = tmp.depth;
+
+        // Adding its dependecies to be printed with a slight indent next
+        if (currentPackage.dependencies) |deps| {
+            for (deps) |dependency| {
+                try stack.append(.{ .package = dependency, .depth = currentDepth + 1 });
+            }
+        }
+
+        if (currentDepth > 0) {
+            // Skipping first column
+            for (maxPackageNumberDigits + 2) |_| {
+                _ = try writer.write(" ");
+            }
+
+            // Indent dependencies
+            for (currentDepth) |_| {
+                _ = try writer.write("\t");
+            }
+        }
+
+        // Enumerate not dependencies
+        if (currentDepth == 0) {
+            try writer.print("{d}.", .{packageNumber});
+
+            const currentDigits = std.math.log10(packageNumber);
+            // Filling spaces so The column has equal width
+            for (maxPackageNumberDigits - currentDigits) |_| {
+                _ = try writer.write(" ");
+            }
+
+            // Spacing
+            _ = try writer.write(" ");
+
+            packageNumber = packageNumber + 1;
+        }
+
+        // Printing the actual name of the package
+        try currentPackage.print(writer);
+    }
+}
+
+fn filterPickedPackages(packages: []const Package, writer: *const std.fs.File.Writer) !std.ArrayList(Package) {
+    var filteredPackages = std.ArrayList(Package).init(std.heap.page_allocator);
+    errdefer filteredPackages.deinit();
+
+    const stdin = std.io.getStdIn().reader();
+
+    try printEnumeratedPackages(packages, writer);
+    writer.print("\n\n");
+    writer.print("Choose the numbers of packages you with to install like (example: 1-3 5, 1-2 4-5 8, 1 2 3 4 5) or press enter for all");
+
+    stdin.read();
+
+    return filteredPackages;
 }
 
 fn dumpPackagesToFile(packages: *const std.ArrayList(Package)) !void {
@@ -91,7 +152,7 @@ fn extractPackageNames(packages: *const std.ArrayList(Package)) ![]const u8 {
 
 fn runPacmanSync(ostream: *const std.fs.File.Writer) !void {
     try ostream.print("Synchronizing pacman\n", .{});
-    var syncResult = std.process.Child.init(&.{ "pacman", "-Syu", "--noconfirm" }, std.heap.page_allocator);
+    var syncResult = std.process.Child.init(&.{ "yay", "-Syu", "--noconfirm" }, std.heap.page_allocator);
 
     const r = try syncResult.spawnAndWait();
 
@@ -105,7 +166,7 @@ fn downloadSelectedPackages(packages: *const std.ArrayList(Package), ostream: *c
 
     try ostream.print("\n\nDownloading packages: {s}\n\n", .{packagesStr});
 
-    const command = [_][]const u8{ "pacman", "-S", packagesStr };
+    const command = [_][]const u8{ "yay", "-S", packagesStr };
 
     var installResult = std.process.Child.init(&command, std.heap.page_allocator);
 
@@ -116,11 +177,13 @@ fn downloadSelectedPackages(packages: *const std.ArrayList(Package), ostream: *c
 }
 
 pub fn main() !void {
+    const DEBUG = true;
+
     const stdout = std.io.getStdOut().writer();
 
     // List of packages
     const packages = comptime [_]Package{
-        Package.init("GRUB", "Bootloader"),                                                       Package.init("sddm", "Login manager"),
+        Package.init("grub", "Bootloader"),                                                       Package.init("sddm", "Login manager"),
         Package.init("pulseaudio", "Sound server, middleware between applications and hardware"), Package.init("pavucontrol", "Sound mixer - Pulse audio volume control"),
         Package.init("waybar", "Wyland top bar"),                                                 Package.init("hyprpaper", "Hyprland wallpapers"),
         Package.init("rofi-lbonn-wayland-git", "Rofi wayland support"),                           Package.init("wlr-randr", "randr for wayland"),
@@ -132,24 +195,34 @@ pub fn main() !void {
         }),
     };
 
+    const pickedPackages = filterPickedPackages(&packages, &stdout) catch |err| {
+        std.debug.print("Couldn't filter picked packages: {any}\n", .{err});
+        return;
+    };
     // Flatteing packages list (adding dependencies to the main list)
     const flattened = flattenPackagesArray(&packages) catch |err| {
         std.debug.print("Couldn't flatten packages array: {any}\n", .{err});
         return;
     };
     defer flattened.deinit();
+    pickedPackages.deinit();
 
-    dumpPackagesToFile(&flattened) catch |err| {
-        std.debug.print("Dumping packages to file failed! {any}", .{err});
-        return;
-    };
-
-    runPacmanSync(&stdout) catch |err| {
-        std.debug.print("Couldn't run pacman sync: {any}", .{err});
-        return;
-    };
-    downloadSelectedPackages(&flattened, &stdout) catch |err| {
-        std.debug.print("Downllading selected packages failed {any}", .{err});
-        return;
-    };
+    if (comptime DEBUG) {
+        std.debug.print("Simulating Printing packages...\n", .{});
+        std.debug.print("Simulating pacman sync...\n", .{});
+        std.debug.print("Simulating upgradingpackages...\n", .{});
+    } else {
+        dumpPackagesToFile(&flattened) catch |err| {
+            std.debug.print("Dumping packages to file failed! {any}\n", .{err});
+            return;
+        };
+        runPacmanSync(&stdout) catch |err| {
+            std.debug.print("Couldn't run pacman sync: {any}\n", .{err});
+            return;
+        };
+        downloadSelectedPackages(&flattened, &stdout) catch |err| {
+            std.debug.print("Downllading selected packages failed: {any}\n", .{err});
+            return;
+        };
+    }
 }
