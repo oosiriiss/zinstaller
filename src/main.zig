@@ -53,7 +53,6 @@ fn printEnumeratedPackages(packages: []const Package, writer: *const std.fs.File
                 _ = try writer.write("\t");
             }
         }
-
         // Enumerate not dependencies
         if (currentDepth == 0) {
             try writer.print("{d}.", .{packageNumber});
@@ -63,29 +62,58 @@ fn printEnumeratedPackages(packages: []const Package, writer: *const std.fs.File
             for (maxPackageNumberDigits - currentDigits) |_| {
                 _ = try writer.write(" ");
             }
-
             // Spacing
             _ = try writer.write(" ");
-
             packageNumber = packageNumber + 1;
         }
-
         // Printing the actual name of the package
         try currentPackage.print(writer);
     }
+}
+
+fn parsePackageInput(packageNumbers:[]i32,input:[]u8) !void {
+
+
+    var index = 0;
+
+
+    while(index < input.len) {
+        // Todo implement this shit
+
+    }
+
+    var buffer:[22]u8 = undefined;
+
+}
+
+fn askForPackages(maxNumber: usize, writer: *const std.fs.File.Writer) !std.ArrayList(i32) {
+    var selected = try std.ArrayList(i32).initCapacity(std.heap.page_allocator, maxNumber);
+    errdefer selected.deinit();
+
+    const stdin = std.io.getStdIn().reader();
+
+    try writer.print("\n\nChoose the numbers of packages you with to install like (example: 1-3 5, 1-2 4-5 8, 1 2 3 4 5) or press enter for all\n", .{});
+    while (true) {
+        try writer.print(">> ", .{});
+        var buffer: [1024]u8 = undefined;
+
+        _ = try stdin.readAll(&buffer);
+
+        try writer.print("Read: {s}", .{buffer});
+        break;
+    }
+
+    return selected;
 }
 
 fn filterPickedPackages(packages: []const Package, writer: *const std.fs.File.Writer) !std.ArrayList(Package) {
     var filteredPackages = std.ArrayList(Package).init(std.heap.page_allocator);
     errdefer filteredPackages.deinit();
 
-    const stdin = std.io.getStdIn().reader();
-
     try printEnumeratedPackages(packages, writer);
-    writer.print("\n\n");
-    writer.print("Choose the numbers of packages you with to install like (example: 1-3 5, 1-2 4-5 8, 1 2 3 4 5) or press enter for all");
 
-    stdin.read();
+    const selected = try ask_for_packages(packages.len, writer);
+    defer selected.deinit();
 
     return filteredPackages;
 }
@@ -122,11 +150,9 @@ fn flattenPackagesArray(packages: []const Package) !std.ArrayList(Package) {
                 }
             }
         }
-
         if (!exists(&flattenedArr, package))
             try flattenedArr.append(package);
     }
-
     return flattenedArr;
 }
 
@@ -225,4 +251,10 @@ pub fn main() !void {
             return;
         };
     }
+}
+
+test "Reading Packages" {
+    _ = try ask_for_packages(120, &std.io.getStdOut().writer());
+
+    try std.testing.expectEqual(1, 1);
 }
