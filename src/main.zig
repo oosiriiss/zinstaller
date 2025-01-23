@@ -71,19 +71,23 @@ fn printEnumeratedPackages(packages: []const Package, writer: *const std.fs.File
     }
 }
 
-fn parsePackageInput(packageNumbers:[]i32,input:[]u8) !void {
+// Inputted packages should be 1-indexed
+fn parsePackageInput(packageNumbers: []i32, input: []const u8) !void {
+    var tokens = std.mem.splitScalar(u8, input, ' ');
 
+    while (tokens.next()) |token| {
 
-    var index = 0;
-
-
-    while(index < input.len) {
-        // Todo implement this shit
-
+        // Package number
+        if (std.fmt.parseInt(i32, token, 10)) |num| {
+            if (num > 0 and num <= packageNumbers.len) {
+                packageNumbers[num] = true;
+            } else std.debug.print("Specified number: {d} is out of rangea ({d}-{d})", .{ num, 0, packageNumbers.len });
+        }
+        // Range
+        else if (std.mem.splitScalar(u8, token, '-')) |range| {
+            _ = range;
+        }
     }
-
-    var buffer:[22]u8 = undefined;
-
 }
 
 fn askForPackages(maxNumber: usize, writer: *const std.fs.File.Writer) !std.ArrayList(i32) {
@@ -112,7 +116,7 @@ fn filterPickedPackages(packages: []const Package, writer: *const std.fs.File.Wr
 
     try printEnumeratedPackages(packages, writer);
 
-    const selected = try ask_for_packages(packages.len, writer);
+    const selected = try askForPackages(packages.len, writer);
     defer selected.deinit();
 
     return filteredPackages;
@@ -254,7 +258,10 @@ pub fn main() !void {
 }
 
 test "Reading Packages" {
-    _ = try ask_for_packages(120, &std.io.getStdOut().writer());
+    var packages: [10]i32 = undefined;
+    @memset(&packages, 0);
+
+    _ = try parsePackageInput(&packages, "1 2 3 4-5 6-8 9");
 
     try std.testing.expectEqual(1, 1);
 }
