@@ -71,22 +71,38 @@ fn printEnumeratedPackages(packages: []const Package, writer: *const std.fs.File
     }
 }
 
-// Inputted packages should be 1-indexed
-fn parsePackageInput(packageNumbers: []i32, input: []const u8) !void {
+fn parsePackageInput(input: []const u8, maxPackageNumber: i32) !std.AutoHashMap(u8, void) {
     var tokens = std.mem.splitScalar(u8, input, ' ');
 
-    while (tokens.next()) |token| {
+    // HasSet
+    var packagesSet = std.AutoHashMap(u8, void);
 
+    while (tokens.next()) |token| {
         // Package number
-        if (std.fmt.parseInt(i32, token, 10)) |num| {
-            if (num > 0 and num <= packageNumbers.len) {
+        if (std.fmt.parseInt(usize, token, 10)) |num| {
+
+            // Package numbers begin at 1
+            if (num > 0 and num <= maxPackageNumber) {
                 packageNumbers[num] = true;
             } else std.debug.print("Specified number: {d} is out of rangea ({d}-{d})", .{ num, 0, packageNumbers.len });
+
+            // Token parsed continuing to the next one
+            continue;
+        } else |err| {
+            std.debug.print("Error when parsing package number: {s}", .{err});
         }
-        // Range
-        else if (std.mem.splitScalar(u8, token, '-')) |range| {
+
+        if (std.mem.splitScalar(u8, token, '-')) |range| {
             _ = range;
+
+            // Token parsed continuing to the next one
+            continue;
+        } else |err| {
+            std.debug.print("Error when splitting range: {s}", .{err});
         }
+
+        // All possible token checks failed - Invalid token
+        std.debug.print("{s} is invalid token", .{token});
     }
 }
 
