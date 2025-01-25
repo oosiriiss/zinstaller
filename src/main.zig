@@ -1,6 +1,13 @@
 const std = @import("std");
 const linux = std.os.linux;
 
+inline fn min(comptime T: type, a: T, b: T) T {
+    return if (a < b) a else b;
+}
+inline fn max(comptime T: type, a: T, b: T) T {
+    return if (a > b) a else b;
+}
+
 const Package = struct {
     name: []const u8,
     description: []const u8,
@@ -28,7 +35,7 @@ fn printEnumeratedPackages(packages: []const Package, writer: *const std.fs.File
     }
 
     var packageNumber: usize = 1;
-    const maxPackageNumberDigits = std.math.log10(packages.len);
+    const maxPackageNumberDigits = std.math.log10(packages.len) + 1;
 
     while (stack.items.len > 0) {
         const tmp = stack.pop();
@@ -71,71 +78,138 @@ fn printEnumeratedPackages(packages: []const Package, writer: *const std.fs.File
     }
 }
 
-fn parsePackageInput(input: []const u8, maxPackageNumber: i32) !std.AutoHashMap(u8, void) {
-    var tokens = std.mem.splitScalar(u8, input, ' ');
+const RangeError = error{
+    // Invalid number of elements in the range like 12-15-3 or range contains invalid characters (not just digits) like 12k-15.
+    NotRangeError,
+};
 
-    // HasSet
-    var packagesSet = std.AutoHashMap(u8, void);
+const RangeResult = struct { bottom: usize, top: usize };
 
-    while (tokens.next()) |token| {
-        // Package number
-        if (std.fmt.parseInt(usize, token, 10)) |num| {
+// Parses a range specfied in rangeToken
+// rangeToken should be of format "X-Y" where X and Y are integers.
+//
+// If X < Y
+// range from X -> Y is returned
+// or else
+// Y -> X
+//
+fn parseRange(rangeToken: []const u8) RangeError!RangeResult {
+    var rangeIterator = std.mem.tokenizeScalar(u8, rangeToken, '-');
 
-            // Package numbers begin at 1
-            if (num > 0 and num <= maxPackageNumber) {
-                packageNumbers[num] = true;
-            } else std.debug.print("Specified number: {d} is out of rangea ({d}-{d})", .{ num, 0, packageNumbers.len });
+    // first, second, null
+    if (rangeIterator.buffer.len != 3)
+        return RangeError.NotRangeError;
 
-            // Token parsed continuing to the next one
-            continue;
-        } else |err| {
-            std.debug.print("Error when parsing package number: {s}", .{err});
-        }
+    const first = rangeIterator.next().?;
+    const second = rangeIterator.next().?;
 
-        if (std.mem.splitScalar(u8, token, '-')) |range| {
-            _ = range;
+    const x = std.fmt.parseInt(usize, first, 10) catch null;
+    const y = std.fmt.parseInt(usize, second, 10) catch null;
 
-            // Token parsed continuing to the next one
-            continue;
-        } else |err| {
-            std.debug.print("Error when splitting range: {s}", .{err});
-        }
+    if (x == null or y == null)
+        return RangeError.NotRangeError;
 
-        // All possible token checks failed - Invalid token
-        std.debug.print("{s} is invalid token", .{token});
-    }
+    return .{ .bottom = min(usize, x.?, y.?), .top = max(usize, x.?, y.?) };
 }
 
-fn askForPackages(maxNumber: usize, writer: *const std.fs.File.Writer) !std.ArrayList(i32) {
-    var selected = try std.ArrayList(i32).initCapacity(std.heap.page_allocator, maxNumber);
-    errdefer selected.deinit();
+// Modifies the input package slice by putting the selected packages at the front and the rest at the end
+// returns the slice of selected packages
+fn parsePackageInput(input: []const u8, packages: []Package) ![]Package {
+    var tokens = std.mem.tokenizeScalar(u8, input, ' ');
 
+    const selectedPackages = try std.heap.page_allocator.alloc(bool, packages.len);
+    defer std.heap.page_allocator.free(selectedPackages);
+    @memset(selectedPackages, false);
+
+    while (tokens.next()) |token| {
+        if (std.fmt.parseInt(usize, token, 10)) |num| {
+            // Package numbers begin at 1
+            if (num > 0 and num <= selectedPackages.len) {
+                selectedPackages[num] = true;
+            } else std.debug.print("Specified number: {d} is out of rangea ({d}-{d})\n", .{ num, 0, selectedPackages.len });
+
+            std.debug.print("Adding package {d}\n", .{num});
+            // Token parsed continuing to the next one
+            continue;
+        } else |_| {}
+
+        if (parseRange(token)) |range| {
+            // Indices capping the range at maximum available ranges
+            const bottom = max(usize, 0, range.bottom - 1);
+            const top = min(usize, selectedPackages.len, range.top + 1);
+
+            for (bottom..top) |i| {
+                selectedPackages[i] = true;
+                std.debug.print("Adding package {d}\n", .{i});
+            }
+            // Token parsed continuing to the next one
+            continue;
+        } else |_| {}
+    }
+
+    var selectedPackagesCount: usize = 0;
+    for (selectedPackages) |isSelected| {
+        if (isSelected)
+            selectedPackagesCount = selectedPackagesCount + 1;
+    }
+
+    std.debug.print("Selected packages counts: {d}\n", .{selectedPackagesCount});
+
+    var i: usize = 0;
+    var j: usize = 0;
+    while (true) {
+
+        // Selected package
+        while (i < selectedPackages.len and selectedPackages[i] == false)
+            i = i + 1;
+
+        // Package empty spot
+        while (j < selectedPackages.len and selectedPackages[j] == true)
+            j = j + 1;
+
+        if (i < packages.len and j < packages.len) {
+            std.mem.swap(Package, &packages[i], &packages[j]);
+            std.mem.swap(bool, &selectedPackages[i], &selectedPackages[j]);
+
+            i = i + 1;
+            j = j + 1;
+        } else break;
+    }
+
+    return packages[0..selectedPackagesCount];
+}
+
+fn askForPackages(packages: []const Package, writer: *const std.fs.File.Writer) ![]Package {
     const stdin = std.io.getStdIn().reader();
 
     try writer.print("\n\nChoose the numbers of packages you with to install like (example: 1-3 5, 1-2 4-5 8, 1 2 3 4 5) or press enter for all\n", .{});
+
     while (true) {
         try writer.print(">> ", .{});
         var buffer: [1024]u8 = undefined;
 
-        _ = try stdin.readAll(&buffer);
+        const bytes = try stdin.readAll(&buffer);
 
-        try writer.print("Read: {s}", .{buffer});
+        if (parsePackageInput(buffer[0..bytes], packages)) |selectedPackagesCount| {
+            return packages[0..selectedPackagesCount];
+        } else |err| {
+            std.debug.print("Couldn't parse the input: {}\n", .{err});
+        }
+
+        try writer.print("Read: {s}", .{buffer[0..bytes]});
         break;
     }
-
-    return selected;
 }
 
-fn filterPickedPackages(packages: []const Package, writer: *const std.fs.File.Writer) !std.ArrayList(Package) {
-    var filteredPackages = std.ArrayList(Package).init(std.heap.page_allocator);
-    errdefer filteredPackages.deinit();
-
+// Modifies the input slice
+// Returns a slice with the filtered packages
+fn filterPickedPackages(packages: []Package, writer: *const std.fs.File.Writer) ![]Package {
     try printEnumeratedPackages(packages, writer);
 
-    const selected = try askForPackages(packages.len, writer);
+    const selected = try askForPackages(packages, writer);
     defer selected.deinit();
 
-    return filteredPackages;
+    return packages[1..2];
 }
 
 fn dumpPackagesToFile(packages: *const std.ArrayList(Package)) !void {
@@ -273,11 +347,46 @@ pub fn main() !void {
     }
 }
 
-test "Reading Packages" {
-    var packages: [10]i32 = undefined;
-    @memset(&packages, 0);
+test "Parsing range" {
+    const range = "1-5";
 
-    _ = try parsePackageInput(&packages, "1 2 3 4-5 6-8 9");
+    const res = try parseRange(range);
+
+    try std.testing.expectEqual(res, RangeResult{ .bottom = 1, .top = 5 });
+}
+
+test "Reading Packages" {
+    var packages: [25]Package = undefined;
+
+    var titleBuf: [32:0]u8 = undefined;
+    var descriptionBuf: [32:0]u8 = undefined;
+
+    var allocator = std.heap.page_allocator;
+
+    for (0..packages.len) |i| {
+        const title = try std.fmt.bufPrint(&titleBuf, "Package {d}", .{i});
+        const description = try std.fmt.bufPrint(&descriptionBuf, "Description {d}", .{i});
+
+        const t = try allocator.alloc(u8, title.len);
+        const d = try allocator.alloc(u8, description.len);
+
+        std.mem.copyForwards(u8, t, title);
+        std.mem.copyForwards(u8, d, description);
+
+        packages[i] = Package.init(t, d);
+    }
+
+    var writer = std.io.getStdOut().writer();
+
+    for (packages) |p| {
+        try p.print(&writer);
+    }
+
+    const selected = try parsePackageInput("2-5 1 8", &packages);
+
+    for (selected) |p| {
+        try p.print(&writer);
+    }
 
     try std.testing.expectEqual(1, 1);
 }
