@@ -8,20 +8,63 @@ inline fn max(comptime T: type, a: T, b: T) T {
     return if (a > b) a else b;
 }
 
+inline fn isWhitespace(c: u8) bool {
+    return (c == ' ' or c == '\t' or c == '\n' or c == '\r');
+}
+// Returns a slice without the whitespaces before and after
+fn removeWhitespace(s: []const u8) []const u8 {
+    var i: usize = 0;
+    var j: usize = s.len;
+
+    while (i < s.len and isWhitespace(s[i]))
+        i = i + 1;
+
+    while (j > i and isWhitespace(s[j - 1]))
+        j = j - 1;
+
+    return s[i..j];
+}
+
+// Represents a package that will be downloaded all with all its dependencies
+// Must call deinit
 const Package = struct {
-    name: []const u8,
-    description: []const u8,
+
+    // Name of the package
+    // Owns the memory
+    name: []u8,
+    // description of the package
+    // Owns the memory
+    description: []u8,
+    // a list of other packages that this package depends on
     dependencies: ?[]const Package,
+    allocator: *const std.mem.Allocator,
 
-    pub fn init(name: []const u8, description: []const u8) Package {
-        return .{ .name = name, .description = description, .dependencies = null };
-    }
+    pub fn init(params: struct { name: []const u8, description: []const u8, dependencies: ?[]const Package = null, allocator: *const std.mem.Allocator = &std.heap.page_allocator }) !Package {
+        const allocator = params.allocator;
 
-    pub fn initWithDependencies(name: []const u8, description: []const u8, dependencies: []const Package) Package {
-        return .{ .name = name, .description = description, .dependencies = dependencies };
+        const name = try allocator.alloc(u8, params.name.len);
+        const description = try allocator.alloc(u8, params.description.len);
+        var packages: ?[]Package = null;
+
+        std.mem.copyForwards(u8, name, params.name);
+        std.mem.copyForwards(u8, description, params.description);
+
+        if (params.dependencies) |deps| {
+            packages = try allocator.alloc(Package, deps.len);
+            std.mem.copyForwards(Package, packages.?, deps);
+        }
+
+        return .{ .name = name, .description = description, .dependencies = packages, .allocator = allocator };
     }
     pub fn print(self: Package, writer: *const std.fs.File.Writer) !void {
         try writer.print("{s} - {s}\n", .{ self.name, self.description });
+    }
+
+    pub fn deinit(self: Package) void {
+        const a = self.allocator;
+        a.free(self.name);
+        a.free(self.description);
+        a.free(self.dependencies);
     }
 };
 
@@ -128,7 +171,6 @@ fn parsePackageInput(input: []const u8, packages: []Package) ![]Package {
                 selectedPackages[num] = true;
             } else std.debug.print("Specified number: {d} is out of rangea ({d}-{d})\n", .{ num, 0, selectedPackages.len });
 
-            std.debug.print("Adding package {d}\n", .{num});
             // Token parsed continuing to the next one
             continue;
         } else |_| {}
@@ -138,10 +180,9 @@ fn parsePackageInput(input: []const u8, packages: []Package) ![]Package {
             const bottom = max(usize, 0, range.bottom - 1);
             const top = min(usize, selectedPackages.len, range.top + 1);
 
-            for (bottom..top) |i| {
+            for (bottom..top) |i|
                 selectedPackages[i] = true;
-                std.debug.print("Adding package {d}\n", .{i});
-            }
+
             // Token parsed continuing to the next one
             continue;
         } else |_| {}
@@ -152,8 +193,6 @@ fn parsePackageInput(input: []const u8, packages: []Package) ![]Package {
         if (isSelected)
             selectedPackagesCount = selectedPackagesCount + 1;
     }
-
-    std.debug.print("Selected packages counts: {d}\n", .{selectedPackagesCount});
 
     var i: usize = 0;
     var j: usize = 0;
@@ -220,9 +259,9 @@ fn dumpPackagesToFile(packages: *const std.ArrayList(Package)) !void {
     var out = fileWriter.writer();
 
     for (packages.items) |package| {
-        try out.print("{s}\n", .{package.name});
-        try fileWriter.flush();
+        try package.print(&out);
     }
+    try fileWriter.flush();
 }
 fn exists(arr: *const std.ArrayList(Package), searched: Package) bool {
     for (arr.items) |package| {
@@ -248,6 +287,57 @@ fn flattenPackagesArray(packages: []const Package) !std.ArrayList(Package) {
             try flattenedArr.append(package);
     }
     return flattenedArr;
+}
+
+// Loads packages from file
+//
+// Packages file format:
+//
+// NAME = DESCRIPTION
+// NAME2 = DESCRIPTION2
+// NAME3 = DESCRIPTION3
+//
+fn loadPackages(fileName: []const u8) !std.ArrayList(Package) {
+    const flags = std.fs.File.OpenFlags{ .mode = .read_only };
+
+    const file = try std.fs.cwd().openFile(fileName, flags);
+    defer file.close();
+
+    var reader = file.reader();
+    var buf: [512:0]u8 = undefined;
+
+    const allocator = std.heap.page_allocator;
+
+    var packages = std.ArrayList(Package).init(allocator);
+
+    while (true) {
+        const read = reader.readUntilDelimiterOrEof(&buf, '\n') catch |err| {
+            std.debug.print("Failed to read from file: {}\n", .{err});
+            break;
+        };
+
+        if (read == null)
+            break;
+
+        var tokens = std.mem.tokenizeScalar(u8, read.?, '=');
+
+        const nameToken = tokens.next();
+        const descriptionToken = tokens.next();
+
+        if (nameToken == null or descriptionToken == null) {
+            std.debug.print("encountered a line with bad format in {s}: line: {s}", .{ fileName, read.? });
+            break;
+        }
+
+        const name = nameToken.?;
+        const description = descriptionToken.?;
+        const package = try Package.init(.{ .name = name, .description = description, .dependencies = null, .allocator = &allocator });
+
+        // Todo Add handling dependencies
+
+        try packages.append(package);
+    }
+    return packages;
 }
 
 fn extractPackageNames(packages: *const std.ArrayList(Package)) ![]const u8 {
@@ -349,9 +439,7 @@ pub fn main() !void {
 
 test "Parsing range" {
     const range = "1-5";
-
     const res = try parseRange(range);
-
     try std.testing.expectEqual(res, RangeResult{ .bottom = 1, .top = 5 });
 }
 
@@ -361,32 +449,49 @@ test "Reading Packages" {
     var titleBuf: [32:0]u8 = undefined;
     var descriptionBuf: [32:0]u8 = undefined;
 
-    var allocator = std.heap.page_allocator;
-
     for (0..packages.len) |i| {
         const title = try std.fmt.bufPrint(&titleBuf, "Package {d}", .{i});
         const description = try std.fmt.bufPrint(&descriptionBuf, "Description {d}", .{i});
 
-        const t = try allocator.alloc(u8, title.len);
-        const d = try allocator.alloc(u8, description.len);
-
-        std.mem.copyForwards(u8, t, title);
-        std.mem.copyForwards(u8, d, description);
-
-        packages[i] = Package.init(t, d);
-    }
-
-    var writer = std.io.getStdOut().writer();
-
-    for (packages) |p| {
-        try p.print(&writer);
+        packages[i] = try Package.init(.{ .name = title, .description = description });
     }
 
     const selected = try parsePackageInput("2-5 1 8", &packages);
 
-    for (selected) |p| {
-        try p.print(&writer);
-    }
+    try std.testing.expectEqualSlices(Package, packages[0..6], selected);
+}
 
-    try std.testing.expectEqual(1, 1);
+test "reading packages from file" {
+    var tmpDir = std.testing.tmpDir(.{ .iterate = true });
+    defer tmpDir.cleanup();
+
+    var tmpFile = try tmpDir.dir.createFile("testfile.list", std.fs.File.CreateFlags{ .read = true, .truncate = true });
+    const fileContent = "Package 1 = This is Package 1\n" ++ "Package 2 = This is Package 2\n" ++ "Package 3 = This is package3\n";
+    _ = try tmpFile.write(fileContent);
+    tmpFile.close();
+
+    // changing the cwd for the test
+    var buf: [512]u8 = undefined;
+    const cwdPath = try std.fs.cwd().realpath(".", &buf);
+    var buf2: [512]u8 = undefined;
+    const tmpPath = try tmpDir.dir.realpath(".", &buf2);
+    try std.posix.chdir(tmpPath);
+
+    const res = try loadPackages("testfile.list");
+
+    // Reverting the cwd to the original
+    try std.posix.chdir(cwdPath);
+
+    try std.testing.expect(res.items.len == 3);
+}
+
+test "removing whitespace from string with only whitespace" {
+    const str = " \t \r \n    ";
+    const res = removeWhitespace(str);
+    try std.testing.expectEqualSlices(u8, res, "");
+}
+test "removing whitespace from nonempty string" {
+    const str = " \t\n\r\r\r\n   Some test string! \r\t\n\n\n  ";
+    const res = removeWhitespace(str);
+    try std.testing.expectEqualSlices(u8, res, "Some test string!");
 }
