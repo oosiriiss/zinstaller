@@ -56,11 +56,21 @@ const Package = struct {
 
         return .{ .name = name, .description = description, .dependencies = packages, .allocator = allocator };
     }
-    pub fn print(self: Package, writer: *const std.fs.File.Writer) !void {
+    pub fn print(self: *const Package, writer: *const std.fs.File.Writer) !void {
         try writer.print("{s} - {s}\n", .{ self.name, self.description });
     }
 
-    pub fn deinit(self: Package) void {
+    pub fn setDependencies(self: *Package, packages: []const Package) !void {
+        if (self.dependencies != null)
+            self.allocator.free(self.dependencies.?);
+
+        const dependencies = try self.allocator.alloc(Package, packages.len);
+        std.mem.copyForwards(Package, dependencies, packages);
+
+        self.dependencies = dependencies;
+    }
+
+    pub fn deinit(self: *Package) void {
         const a = self.allocator;
         a.free(self.name);
         a.free(self.description);
@@ -309,6 +319,17 @@ fn loadPackages(fileName: []const u8) !std.ArrayList(Package) {
     const allocator = std.heap.page_allocator;
 
     var packages = std.ArrayList(Package).init(allocator);
+    var dependenciesHelper = std.ArrayList(Package).init(allocator);
+    defer dependenciesHelper.deinit();
+
+    const countIndent = struct {
+        fn cnt(s: []const u8) usize {
+            var i: usize = 0;
+            while (i < s.len and s[i] == '\t')
+                i = i + 1;
+            return i;
+        }
+    }.cnt;
 
     while (true) {
         const read = reader.readUntilDelimiterOrEof(&buf, '\n') catch |err| {
@@ -323,9 +344,10 @@ fn loadPackages(fileName: []const u8) !std.ArrayList(Package) {
 
         const nameToken = tokens.next();
         const descriptionToken = tokens.next();
+        const currentIndent = countIndent(read.?);
 
         if (nameToken == null or descriptionToken == null) {
-            std.debug.print("encountered a line with bad format in {s}: line: {s}", .{ fileName, read.? });
+            std.debug.print("encountered a line with bad format in {s}: line: {s}\n", .{ fileName, read.? });
             break;
         }
 
@@ -333,10 +355,27 @@ fn loadPackages(fileName: []const u8) !std.ArrayList(Package) {
         const description = descriptionToken.?;
         const package = try Package.init(.{ .name = name, .description = description, .dependencies = null, .allocator = &allocator });
 
-        // Todo Add handling dependencies
+        // Dependency
+        if (currentIndent > 0)
+            try dependenciesHelper.append(package)
+        else {
+            // Flushing all previous dependencies to its corresponding package
+            if (packages.items.len > 0 and dependenciesHelper.items.len > 0) {
+                try packages.items[packages.items.len - 1].setDependencies(dependenciesHelper.items);
 
-        try packages.append(package);
+                dependenciesHelper.clearRetainingCapacity();
+            }
+            // Adding current package
+            try packages.append(package);
+        }
     }
+
+    // Flushing remaining dependencies
+    if (packages.items.len > 0 and dependenciesHelper.items.len > 0) {
+        try packages.items[packages.items.len - 1].setDependencies(dependenciesHelper.items);
+        dependenciesHelper.clearRetainingCapacity();
+    }
+
     return packages;
 }
 
@@ -466,7 +505,15 @@ test "reading packages from file" {
     defer tmpDir.cleanup();
 
     var tmpFile = try tmpDir.dir.createFile("testfile.list", std.fs.File.CreateFlags{ .read = true, .truncate = true });
-    const fileContent = "Package 1 = This is Package 1\n" ++ "Package 2 = This is Package 2\n" ++ "Package 3 = This is package3\n";
+    const fileContent = "Package 1 = This is Package 1\n" ++
+        "\tDependency 1 = This is some dependency\n" ++
+        "\tDependency 2 = This is some dependency 2\n" ++
+        "Package 2 = This is Package 2\n" ++
+        "\tDependency 3 = This is some dependency\n" ++
+        "\tDependency 4 = This is some dependency 2\n" ++
+        "Package 3 = This is package3\n" ++
+        "\tDependency 5 = This is some dependency\n" ++
+        "\tDependency 6 = This is some dependency 2\n";
     _ = try tmpFile.write(fileContent);
     tmpFile.close();
 
@@ -478,6 +525,8 @@ test "reading packages from file" {
     try std.posix.chdir(tmpPath);
 
     const res = try loadPackages("testfile.list");
+
+    try printEnumeratedPackages(res.items, &std.io.getStdOut().writer());
 
     // Reverting the cwd to the original
     try std.posix.chdir(cwdPath);
