@@ -1,4 +1,5 @@
 const std = @import("std");
+const cfg = @import("configure_packages.zig");
 const linux = std.os.linux;
 
 inline fn min(comptime T: type, a: T, b: T) T {
@@ -27,7 +28,7 @@ fn removeWhitespace(s: []const u8) []const u8 {
 
 // Represents a package that will be downloaded all with all its dependencies
 // Must call deinit
-const Package = struct {
+pub const Package = struct {
 
     // Name of the package
     // Owns the memory
@@ -228,7 +229,7 @@ fn parsePackageInput(input: []const u8, packages: []Package) ![]Package {
     return packages[0..selectedPackagesCount];
 }
 
-fn askForPackages(packages: []const Package, writer: *const std.fs.File.Writer) ![]Package {
+fn askForPackages(packages: []Package, writer: *const std.fs.File.Writer) ![]Package {
     const stdin = std.io.getStdIn().reader();
 
     try writer.print("\n\nChoose the numbers of packages you with to install like (example: 1-3 5, 1-2 4-5 8, 1 2 3 4 5) or press enter for all\n", .{});
@@ -239,30 +240,18 @@ fn askForPackages(packages: []const Package, writer: *const std.fs.File.Writer) 
 
         const bytes = try stdin.readAll(&buffer);
 
-        if (parsePackageInput(buffer[0..bytes], packages)) |selectedPackagesCount| {
-            return packages[0..selectedPackagesCount];
+        if (parsePackageInput(buffer[0..bytes], packages)) |filteredPackages| {
+            return filteredPackages;
         } else |err| {
-            std.debug.print("Couldn't parse the input: {}\n", .{err});
+            try writer.print("Couldn't selected packages: {any}\n", .{err});
         }
-
-        try writer.print("Read: {s}", .{buffer[0..bytes]});
-        break;
     }
+
+    unreachable;
 }
 
-// Modifies the input slice
-// Returns a slice with the filtered packages
-fn filterPickedPackages(packages: []Package, writer: *const std.fs.File.Writer) ![]Package {
-    try printEnumeratedPackages(packages, writer);
-
-    const selected = try askForPackages(packages, writer);
-    defer selected.deinit();
-
-    return packages[1..2];
-}
-
-fn dumpPackagesToFile(packages: *const std.ArrayList(Package)) !void {
-    var file = try std.fs.cwd().createFile("packages.list", .{ .truncate = true });
+fn dumpPackagesToFile(fileName: []const u8, packages: *const std.ArrayList(Package)) !void {
+    var file = try std.fs.cwd().createFile(fileName, .{ .truncate = true });
     defer file.close();
 
     var fileWriter = std.io.bufferedWriter(file.writer());
@@ -273,6 +262,7 @@ fn dumpPackagesToFile(packages: *const std.ArrayList(Package)) !void {
     }
     try fileWriter.flush();
 }
+
 fn exists(arr: *const std.ArrayList(Package), searched: Package) bool {
     for (arr.items) |package| {
         if (std.mem.eql(u8, package.name, searched.name))
@@ -319,6 +309,8 @@ fn loadPackages(fileName: []const u8) !std.ArrayList(Package) {
     const allocator = std.heap.page_allocator;
 
     var packages = std.ArrayList(Package).init(allocator);
+    errdefer packages.deinit();
+
     var dependenciesHelper = std.ArrayList(Package).init(allocator);
     defer dependenciesHelper.deinit();
 
@@ -379,9 +371,9 @@ fn loadPackages(fileName: []const u8) !std.ArrayList(Package) {
     return packages;
 }
 
-fn extractPackageNames(packages: *const std.ArrayList(Package)) ![]const u8 {
+fn extractPackageNames(packages: []const Package) ![]const u8 {
     var len = packages.items.len; // space for spaces
-    for (packages.items) |package| {
+    for (packages) |package| {
         len += package.name.len;
     }
 
@@ -409,9 +401,9 @@ fn runPacmanSync(ostream: *const std.fs.File.Writer) !void {
         return error.PacmanError;
 }
 
-fn downloadSelectedPackages(packages: *const std.ArrayList(Package), ostream: *const std.fs.File.Writer) !void {
+fn downloadSelectedPackages(packages: []const Package, ostream: *const std.fs.File.Writer) !void {
     const packagesStr = try extractPackageNames(packages);
-    errdefer std.heap.page_allocator.free(packagesStr);
+    defer std.heap.page_allocator.free(packagesStr);
 
     try ostream.print("\n\nDownloading packages: {s}\n\n", .{packagesStr});
 
@@ -427,41 +419,44 @@ fn downloadSelectedPackages(packages: *const std.ArrayList(Package), ostream: *c
 
 pub fn main() !void {
     const DEBUG = true;
+    const PACKAGES_FILENAME = "packages.list";
+    const SELECTED_PACKAGES_FILENAME = "selected-packages.lock";
 
     const stdout = std.io.getStdOut().writer();
 
-    // List of packages
-    const packages = comptime [_]Package{
-        Package.init("grub", "Bootloader"),                                                       Package.init("sddm", "Login manager"),
-        Package.init("pulseaudio", "Sound server, middleware between applications and hardware"), Package.init("pavucontrol", "Sound mixer - Pulse audio volume control"),
-        Package.init("waybar", "Wyland top bar"),                                                 Package.init("hyprpaper", "Hyprland wallpapers"),
-        Package.init("rofi-lbonn-wayland-git", "Rofi wayland support"),                           Package.init("wlr-randr", "randr for wayland"),
-        Package.init("swaync", "Notifications"),                                                  Package.init("brightnessctl", "Changing screen brightness"),
-        Package.init("nautilus", "File manager/explorer"),                                        Package.initWithDependencies("nvidia-dkms", "Nvidia graphics drivers", &[_]Package{Package.init("egl-wayland", "Idk some opengl nvidia support shit")}),
-        Package.initWithDependencies("hyprland-git", "Window manager", &[_]Package{
-            Package.init("qt5-wayland", "Qt5 with wayland support"),
-            Package.init("qt6-wayland", "Qt6 with wayland support"),
-        }),
+    const packages = loadPackages(PACKAGES_FILENAME) catch |err| {
+        const ferr = std.fs.File.OpenError;
+        switch (err) {
+            ferr.FileNotFound => {
+                std.debug.print("Couldn't find {s} file. Please put it in the same directory as the executable.\n", .{PACKAGES_FILENAME});
+            },
+            ferr.AccessDenied => {
+                std.debug.print("Access denied to {s} file.", .{PACKAGES_FILENAME});
+            },
+            else => {
+                std.debug.print("Unknown error with {s} file.", .{PACKAGES_FILENAME});
+            },
+        }
+        return;
     };
+    defer packages.deinit();
 
-    const pickedPackages = filterPickedPackages(&packages, &stdout) catch |err| {
+    const pickedPackages = askForPackages(packages.items, &stdout) catch |err| {
         std.debug.print("Couldn't filter picked packages: {any}\n", .{err});
         return;
     };
     // Flatteing packages list (adding dependencies to the main list)
-    const flattened = flattenPackagesArray(&packages) catch |err| {
+    const flattened = flattenPackagesArray(pickedPackages) catch |err| {
         std.debug.print("Couldn't flatten packages array: {any}\n", .{err});
         return;
     };
-    defer flattened.deinit();
-    pickedPackages.deinit();
 
     if (comptime DEBUG) {
         std.debug.print("Simulating Printing packages...\n", .{});
         std.debug.print("Simulating pacman sync...\n", .{});
         std.debug.print("Simulating upgradingpackages...\n", .{});
     } else {
-        dumpPackagesToFile(&flattened) catch |err| {
+        dumpPackagesToFile(SELECTED_PACKAGES_FILENAME, &flattened) catch |err| {
             std.debug.print("Dumping packages to file failed! {any}\n", .{err});
             return;
         };
