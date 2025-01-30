@@ -249,20 +249,6 @@ fn askForPackages(packages: []Package, writer: *const std.fs.File.Writer) ![]Pac
 
     unreachable;
 }
-
-fn dumpPackagesToFile(fileName: []const u8, packages: *const std.ArrayList(Package)) !void {
-    var file = try std.fs.cwd().createFile(fileName, .{ .truncate = true });
-    defer file.close();
-
-    var fileWriter = std.io.bufferedWriter(file.writer());
-    var out = fileWriter.writer();
-
-    for (packages.items) |package| {
-        try package.print(&out);
-    }
-    try fileWriter.flush();
-}
-
 fn exists(arr: *const std.ArrayList(Package), searched: Package) bool {
     for (arr.items) |package| {
         if (std.mem.eql(u8, package.name, searched.name))
@@ -445,6 +431,7 @@ pub fn main() !void {
         std.debug.print("Couldn't filter picked packages: {any}\n", .{err});
         return;
     };
+
     // Flatteing packages list (adding dependencies to the main list)
     const flattened = flattenPackagesArray(pickedPackages) catch |err| {
         std.debug.print("Couldn't flatten packages array: {any}\n", .{err});
@@ -456,9 +443,8 @@ pub fn main() !void {
         std.debug.print("Simulating pacman sync...\n", .{});
         std.debug.print("Simulating upgradingpackages...\n", .{});
     } else {
-        dumpPackagesToFile(SELECTED_PACKAGES_FILENAME, &flattened) catch |err| {
-            std.debug.print("Dumping packages to file failed! {any}\n", .{err});
-            return;
+        cfg.saveConfigurePackages(flattened) catch |err| {
+            std.debug.print("Couldn't create packages-to-configure file: {any}", .{err});
         };
         runPacmanSync(&stdout) catch |err| {
             std.debug.print("Couldn't run pacman sync: {any}\n", .{err});
