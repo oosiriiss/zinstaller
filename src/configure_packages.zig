@@ -2,9 +2,15 @@ const std = @import("std");
 const main = @import("main.zig");
 const testing = std.testing;
 
+const PackageStatus = enum {
+    None,
+    Downloaded,
+    Configured,
+};
+
 const PackageConfigurationStatus = struct {
     name: []u8,
-    done: bool,
+    status: PackageStatus,
 
     fn init(name: []const u8, done: bool) !@This() {
         var allocator = std.heap.page_allocator;
@@ -79,8 +85,23 @@ fn saveConfigurePackages(fileName: []const u8, packages: []const main.Package) !
     try fileWriter.flush();
 }
 
+// Copies the names of the packages
+// and marks every package as not done
+// Used if program was not resumed
+fn toConfigurationStatusArray(arr: *std.ArrayList(main.Package)) !std.ArrayList(PackageConfigurationStatus) {
+    var out = std.ArrayList(PackageConfigurationStatus).init(std.heap.page_allocator);
+
+    for (arr.items) |item| {
+        const package = try PackageConfigurationStatus.init(item.name, false);
+
+        try out.append(package);
+    }
+
+    return out;
+}
+
 // Runs the configurations
-fn runConfigurations(selected: *const std.ArrayList(main.Package)) !void {
+fn runConfigurations(selected: *const std.ArrayList(PackageConfigurationStatus)) !void {
     _ = selected;
 }
 

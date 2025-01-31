@@ -443,11 +443,10 @@ pub fn main() !void {
         std.debug.print("Simulating pacman sync...\n", .{});
         std.debug.print("Simulating upgradingpackages...\n", .{});
     } else {
-        cfg.saveConfigurePackages(SELECTED_PACKAGES_FILENAME, flattened) catch |err| {
-            std.debug.print("Couldn't create packages-to-configure file: {any}", .{err});
-        };
-        _ =
-            runPacmanSync(&stdout) catch |err| {
+        //
+        // Downloading selected packages
+        //
+        runPacmanSync(&stdout) catch |err| {
             std.debug.print("Couldn't run pacman sync: {any}\n", .{err});
             return;
         };
@@ -455,6 +454,17 @@ pub fn main() !void {
             std.debug.print("Downllading selected packages failed: {any}\n", .{err});
             return;
         };
+
+        //
+        // Configuring packages
+        //
+        const statuses = cfg.toConfigurationStatusArray(&flattened) catch |err| {
+            std.debug.print("Couldn't convert to status array .{any}", .{err});
+            return;
+        };
+        defer statuses.deinit();
+
+        try cfg.runConfigurations(&statuses);
     }
 }
 
