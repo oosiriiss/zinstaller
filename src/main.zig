@@ -443,10 +443,11 @@ pub fn main() !void {
         std.debug.print("Simulating pacman sync...\n", .{});
         std.debug.print("Simulating upgradingpackages...\n", .{});
     } else {
-        cfg.saveConfigurePackages(flattened) catch |err| {
+        cfg.saveConfigurePackages(SELECTED_PACKAGES_FILENAME, flattened) catch |err| {
             std.debug.print("Couldn't create packages-to-configure file: {any}", .{err});
         };
-        runPacmanSync(&stdout) catch |err| {
+        _ =
+            runPacmanSync(&stdout) catch |err| {
             std.debug.print("Couldn't run pacman sync: {any}\n", .{err});
             return;
         };
