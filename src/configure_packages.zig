@@ -12,14 +12,14 @@ const PackageConfigurationStatus = struct {
     name: []u8,
     status: PackageStatus,
 
-    fn init(name: []const u8, done: bool) !@This() {
+    fn init(name: []const u8, status: PackageStatus) !@This() {
         var allocator = std.heap.page_allocator;
 
         const nameCpy = try allocator.alloc(u8, name.len);
 
         std.mem.copyForwards(u8, nameCpy, name);
 
-        return .{ .name = nameCpy, .done = done };
+        return .{ .name = nameCpy, .status = status };
     }
 };
 
@@ -56,7 +56,14 @@ fn loadConfigurePackages(fileName: []const u8) !std.ArrayList(PackageConfigurati
         var tokenizer = std.mem.tokenizeScalar(u8, line, ' ');
 
         const name = tokenizer.next();
-        const isDone = if (tokenizer.next()) |value| std.mem.eql(u8, value, "Done") else false;
+        const isDone = if (tokenizer.next()) |value| {
+            if (std.mem.eql(u8, value, "Downloaded"))
+                PackageStatus.Downloaded
+            else if (std.mem.eql(u8, value, "Configured"))
+                PackageStatus.Configured
+            else
+                PackageStatus.None;
+        } else PackageStatus.None;
         //const isDone = std.mem.eql(u8, tokenizer.next(), "Done");
 
         if (name != null) {
