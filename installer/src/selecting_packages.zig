@@ -1,4 +1,5 @@
 const std = @import("std");
+const util = @import("util.zig");
 
 const PackageDescriptor = struct {
     name: []const u8,
@@ -8,26 +9,32 @@ const PackageDescriptor = struct {
 
     const Self = @This();
 
-    fn init(params: struct { name: []const u8, description: []const u8, dependencies: ?[]PackageDescriptor, allocator: std.mem.Allocator }) PackageDescriptor {
-        allocator = params.allocator;
-
-        var name = try params.allocator.alloc(u8, params.name.len);
+    fn init(params: struct { name: []const u8, description: []const u8, allocator: std.mem.Allocator }) !PackageDescriptor {
+        const name = try params.allocator.dupe(u8, params.name);
         errdefer params.allocator.free(name);
 
-        var description = try params.allocator.alloc(u8, params.description.len);
+        const description = try params.allocator.dupe(u8, params.description);
         errdefer params.allocator.free(description);
 
-        var dependencies = null;
+        return Self{ .name = name, .description = description, .dependencies = null, .allocator = params.allocator };
+    }
 
-        std.mem.copyForwards(u8, name, params.name);
-        std.mem.copyForwards(u8, description, params.description);
+    //
+    // Returns updated PackageDescriptor with specified dependencies
+    //
+    // Dependencies names,descriptions etc. must remain valid!
+    //
+    fn setDependencies(self: Self, deps: []RawPackageDescriptor) !Self {
+        var dependencies = try self.allocator.alloc(PackageDescriptor, deps.len);
 
-        if (params.dependencies) |deps| {
-            dependencies = params.allocator.alloc(PackageDescriptor, deps.len);
-            errdefer params.allocator.free(dependencies);
+        var i: usize = 0;
+
+        for (deps) |d| {
+            dependencies[i] = d.pkg;
+            i = i + 1;
         }
 
-        return .{ name, description, dependencies };
+        return Self{ .name = self.name, .description = self.description, .dependencies = dependencies, .allocator = self.allocator };
     }
 
     fn deinit(self: Self) !void {
@@ -38,10 +45,7 @@ const PackageDescriptor = struct {
     }
 };
 
-const RawPackageDescriptor = struct {
-    pkg: PackageDescriptor,
-    indent: u8,
-};
+const RawPackageDescriptor = struct { pkg: PackageDescriptor, indent: u32 };
 
 const ReadPackageError = error{ PackageTooLong, ReadError };
 
@@ -49,40 +53,23 @@ const ReadPackageError = error{ PackageTooLong, ReadError };
 pub fn loadPackages(filename: []const u8) ![]PackageDescriptor {
     const raw = try loadRawPackagesFromFile(filename);
     defer raw.deinit();
-    return try setDependencies(raw);
-}
-
-// Counts numer of tabs or sequences of 4*space from the left of the slice
-fn countIndent(s: []const u8) u32 {
-    const INDENT_SPACE_COUNT = 4;
-
-    var i = 0;
-    var indents: u32 = 0;
-    while (i < s.len) {
-        if (s[i] == '\t') {
-            i = i + 1;
-            indents = indents + 1;
-        } else if (i + INDENT_SPACE_COUNT - 1 < s.len) {
-            i = i + INDENT_SPACE_COUNT;
-            indents = indents + 1;
-        } else break;
-    }
-    return indents;
+    return try createPackageTree(raw.items);
 }
 
 // Loads packages without set dependencies yet
 // just parses the file and extracts the name and description along with indent of the package to help with package dependencies
 fn loadRawPackagesFromFile(filename: []const u8) !std.ArrayList(RawPackageDescriptor) {
-    const file = try std.fs.cwd().openFile(filename);
+    const flags: std.fs.File.OpenFlags = .{ .mode = .read_only };
+    const file = try std.fs.cwd().openFile(filename, flags);
     defer file.close();
 
     const file_reader = file.reader();
-    const buf: [4096]u8 = undefined;
+    var buf: [4096]u8 = undefined;
 
     var packages = std.ArrayList(RawPackageDescriptor).init(std.heap.page_allocator);
 
     while (true) {
-        const slice = file_reader.readUntilDelimiterOrEof(buf, " ") catch |err| {
+        const slice = file_reader.readUntilDelimiterOrEof(&buf, ' ') catch |err| {
             if (err == error.StreamTooLong)
                 return ReadPackageError.PackageTooLong
             else
@@ -92,16 +79,19 @@ fn loadRawPackagesFromFile(filename: []const u8) !std.ArrayList(RawPackageDescri
         if (slice == null)
             break;
 
-        const tokenizer = std.mem.tokenizeScalar(slice, " ");
-        const name = tokenizer.next();
-        const description = tokenizer.next();
-        const indent = countIndent(slice);
+        var tokenizer = std.mem.tokenizeScalar(u8, slice.?, '=');
+        const nameToken = tokenizer.next();
+        const descriptionToken = tokenizer.next();
+        const indent = util.countIndent(slice.?);
 
-        if (name == null or description == null) {
+        if (nameToken == null or descriptionToken == null) {
             std.debug.print("Couldn't parse Package. LINE: {s}", .{buf});
             continue;
         }
-        const package = try PackageDescriptor.init(.{ .name = name, .description = description, .dependencies = null, .allocator = std.heap.page_allocator });
+
+        const name = util.clipWhitespace(nameToken.?);
+        const description = util.clipWhitespace(descriptionToken.?);
+        const package = try PackageDescriptor.init(.{ .name = name, .description = description, .allocator = std.heap.page_allocator });
 
         try packages.append(.{ .pkg = package, .indent = indent });
     }
@@ -131,18 +121,18 @@ fn countDependeciesOfPackage(pkgs: []const RawPackageDescriptor, packageIndex: u
 }
 
 // Allcates all resources and returns a slice of the Packages
-fn setDependencies(pkgs: []const RawPackageDescriptor) ![]PackageDescriptor {
+fn createPackageTree(pkgs: []const RawPackageDescriptor) ![]PackageDescriptor {
     std.debug.assert(pkgs.len > 0);
 
     // Calcualting Min indent
-    var min_indent = std.math.maxInt(u32);
+    var min_indent: u32 = std.math.maxInt(u32);
     for (pkgs) |package| {
         if (package.indent < min_indent)
             min_indent = package.indent;
     }
 
     // Counting root packages
-    var root_count = 0;
+    var root_count: u32 = 0;
     for (pkgs) |package| {
         if (package.indent == min_indent)
             root_count = root_count + 1;
@@ -152,44 +142,38 @@ fn setDependencies(pkgs: []const RawPackageDescriptor) ![]PackageDescriptor {
     //
 
     const allocator = std.heap.page_allocator;
-
     // Output packages
     var root_packages = try allocator.alloc(PackageDescriptor, root_count);
     // Index to help insert packages
-    var root_index = 0;
+    var root_index = root_packages.len - 1;
+    var packagesStack = std.ArrayList(RawPackageDescriptor).init(std.heap.page_allocator);
+    defer packagesStack.deinit();
 
-    errdefer allocator.free(root_packages);
-    var helperStack = try std.ArrayList(PackageDescriptor).init(allocator);
-    defer helperStack.deinit();
+    var i = pkgs.len;
 
-    var i = pkgs.len - 1;
-    var last_indent = pkgs[i].indent;
-    var dependency_counter = 0;
-
-    while (i >= 0) {
-        const current_pkg = pkgs[i];
-
-        // These are valid indents of depdendenceis of x
-        // X
-        //                   Y
-        //          Z
-        //  W
-        if (current_pkg.indent >= last_indent)
-            helperStack.append(current_pkg.pkg)
-        else {
-            // Adding all dependencies
-            current_pkg.pkg.dependencies = try allocator.alloc(PackageDescriptor, helperStack.items.len);
-
-            std.mem.copyForwards(PackageDescriptor, current_pkg.pkg.dependencies, helperStack.items);
-            try helperStack.clearRetainingCapacity();
-
-            if (current_pkg.indent == min_indent) {
-                root_packages[root_index] = current_pkg.pkg;
-                root_index = root_index + 1;
-            } else helperStack.append(current_pkg.pkg);
-        }
-
-        last_indent = current_pkg.indent;
+    // Iteraing packages from the end
+    while (i > 0) {
         i = i - 1;
+        std.debug.assert(root_index >= 0);
+
+        const current_package = pkgs[i];
+
+        if (packagesStack.getLastOrNull()) |previous_package| {
+            // Previous packages were a children of current package
+            // Setting its children
+            if (previous_package.indent > current_package.indent) {
+                const updated_pkg = try current_package.pkg.setDependencies(packagesStack.items);
+                packagesStack.clearRetainingCapacity();
+
+                // Adding root package to the final slice
+                if (current_package.indent == 0) {
+                    root_packages[root_index] = updated_pkg;
+                    root_index = root_index - 1;
+                } else try packagesStack.append(.{ .indent = current_package.indent, .pkg = updated_pkg });
+            } else // Package is a sibling of previous package
+            try packagesStack.append(current_package);
+        }
     }
+
+    return root_packages;
 }
