@@ -1,5 +1,10 @@
 const std = @import("std");
 
+pub fn printCharN(c: u8, n: usize, writer: std.fs.File.Writer) !void {
+    for (n) |_|
+        _ = try writer.print("{c}", .{c});
+}
+
 pub fn countChar(comptime str: []const u8, comptime char: u8) comptime_int {
     comptime {
         var count: usize = 0;
@@ -15,13 +20,13 @@ pub const IndentError = error{
 InvalidSpaceIndent};
 
 // Counts numer of tabs or sequences of 4*space from the left of the slice
-pub fn countIndent(s: []const u8) IndentError!usize {
+pub fn countIndent(s: []const u8) IndentError!u8 {
     if (s.len <= 0)
         return 0;
 
     const INDENT_SPACE_COUNT = 4;
 
-    var indents: usize = 0;
+    var indents: u8 = 0;
 
     var i: usize = 0;
     while (i < s.len) {

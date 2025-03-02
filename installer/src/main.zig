@@ -7,9 +7,10 @@ pub fn main() !void {
     const packages = try loading.loadPackages(PACKAGES_LIST_FILENAME);
     defer {
         for (packages) |p| {
-            p.deinit();
+            p.deinit(std.heap.page_allocator);
         }
+        std.heap.page_allocator.free(packages);
     }
-}
 
-test "simple test" {}
+    try packages[0].print(std.io.getStdOut().writer());
+}

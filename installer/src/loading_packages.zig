@@ -39,20 +39,49 @@ const PackageDescriptor = struct {
         return Self{ .name = self.name, .description = self.description, .dependencies = dependencies };
     }
 
-    fn deinit(self: Self, allocator: std.mem.Allocator) !void {
+    pub fn deinit(self: Self, allocator: std.mem.Allocator) void {
         allocator.free(self.name);
         allocator.free(self.description);
 
         if (self.dependencies) |deps| {
-            for (0..deps) |i| {
-                self.dependencies[i].deinit();
-                allocator.free(self.dependencies[i]);
+            for (0..deps.len) |i| {
+                deps[i].deinit(allocator);
             }
+            allocator.free(deps);
         }
+    }
+
+    // Prints the package
+    pub fn print(self: Self, writer: std.fs.File.Writer) !void {
+        try self.printWithIndent(0, writer);
+    }
+
+    // Print helper to tree-like printing with indents
+    fn printWithIndent(self: Self, indent: u8, writer: std.fs.File.Writer) !void {
+        try util.printCharN('\t', indent, writer);
+        _ = try writer.write("Package {\n");
+        try util.printCharN('\t', indent + 1, writer);
+        _ = try writer.print("name: \"{s}\"\n", .{self.name});
+        try util.printCharN('\t', indent + 1, writer);
+        _ = try writer.print("description: \"{s}\"\n", .{self.description});
+        try util.printCharN('\t', indent + 1, writer);
+        if (self.dependencies) |ds| {
+            _ = try writer.write("dependencies: [\n");
+            for (ds) |d|
+                try d.printWithIndent(indent + 2, writer);
+
+            try util.printCharN('\t', indent + 1, writer);
+            _ = try writer.write("]\n");
+        } else {
+            _ = try writer.write("dependencies: []");
+        }
+
+        try util.printCharN('\t', indent, writer);
+        _ = try writer.write("}\n");
     }
 };
 
-const RawPackageDescriptor = struct { pkg: PackageDescriptor, indent: u32 };
+const RawPackageDescriptor = struct { pkg: PackageDescriptor, indent: u8 };
 
 const ReadPackageError = error{ PackageTooLong, ReadError };
 
@@ -89,7 +118,7 @@ fn loadRawPackagesFromFile(filename: []const u8) !std.ArrayList(RawPackageDescri
         var tokenizer = std.mem.tokenizeScalar(u8, slice.?, '=');
         const nameToken = tokenizer.next();
         const descriptionToken = tokenizer.next();
-        const indent = util.countIndent(slice.?);
+        const indent = try util.countIndent(slice.?);
 
         if (nameToken == null or descriptionToken == null) {
             std.debug.print("Couldn't parse Package. LINE: {s}", .{buf});
@@ -244,4 +273,25 @@ test "Creatin Package tree with only many levels" {
     try std.testing.expectEqual(1, res[0].dependencies.?.len);
     try std.testing.expectEqual(3, res[1].dependencies.?.len);
     try std.testing.expectEqual(null, res[2].dependencies);
+}
+
+test "Printing test" {
+    const pkgs = [_]RawPackageDescriptor{
+        .{ .indent = 0, .pkg = PackageDescriptor{ .name = "P1", .description = "D1", .dependencies = null } },
+        .{ .indent = 1, .pkg = PackageDescriptor{ .name = "P2", .description = "D2", .dependencies = null } },
+        .{ .indent = 2, .pkg = PackageDescriptor{ .name = "P3", .description = "D3", .dependencies = null } },
+
+        .{ .indent = 0, .pkg = PackageDescriptor{ .name = "P4", .description = "D4", .dependencies = null } },
+
+        .{ .indent = 1, .pkg = PackageDescriptor{ .name = "P5", .description = "D5", .dependencies = null } },
+        .{ .indent = 1, .pkg = PackageDescriptor{ .name = "P6", .description = "D6", .dependencies = null } },
+        .{ .indent = 2, .pkg = PackageDescriptor{ .name = "P7", .description = "D7", .dependencies = null } },
+        .{ .indent = 1, .pkg = PackageDescriptor{ .name = "P8", .description = "D8", .dependencies = null } },
+
+        .{ .indent = 0, .pkg = PackageDescriptor{ .name = "P9", .description = "D9", .dependencies = null } },
+    };
+
+    const res = try createPackageTree(&pkgs);
+
+    try res[0].print(std.io.getStdOut().writer());
 }
