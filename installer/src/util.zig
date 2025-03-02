@@ -10,23 +10,52 @@ pub fn countChar(comptime str: []const u8, comptime char: u8) comptime_int {
     }
 }
 
+pub const IndentError = error{
+// number of spaces doesn't match specfieid number of spaces in an indent
+InvalidSpaceIndent};
+
 // Counts numer of tabs or sequences of 4*space from the left of the slice
-pub fn countIndent(s: []const u8) u32 {
-    const SPACE_INDENT: []const u8 = "    ";
-    const INDENT_SPACE_COUNT = comptime countChar(SPACE_INDENT, ' ');
+pub fn countIndent(s: []const u8) IndentError!usize {
+    if (s.len <= 0)
+        return 0;
+
+    const INDENT_SPACE_COUNT = 4;
+
+    var indents: usize = 0;
 
     var i: usize = 0;
-    var indents: u32 = 0;
     while (i < s.len) {
-        if (s[i] == '\t') {
-            i = i + 1;
-            indents = indents + 1;
-        } else if (s.len > 4 and i < s.len - 4 and std.mem.eql(u8, s[i .. i + 4], SPACE_INDENT)) {
+        const isSpaceIndent = try validSpaceIndent(s[i..], INDENT_SPACE_COUNT);
+
+        if (isSpaceIndent) {
             i = i + INDENT_SPACE_COUNT;
             indents = indents + 1;
+        } else if (s[i] == '\t') {
+            indents = indents + 1;
+            i = i + 1;
         } else break;
     }
+
     return indents;
+}
+
+// Check if all {spaceCount} first characters of slice are spaces
+//
+// if yes => true
+// if the first character isn't space returns false
+// if first char is space but any other isn't returns InvalidSpaceIndent
+//
+fn validSpaceIndent(s: []const u8, comptime spaceCount: usize) IndentError!bool {
+    if (s[0] != ' ')
+        return false;
+
+    const end = if (s.len < spaceCount) s.len else spaceCount;
+
+    for (1..end) |i|
+        if (s[i] != ' ')
+            return IndentError.InvalidSpaceIndent;
+
+    return true;
 }
 
 pub fn isWhitespace(c: u8) bool {
