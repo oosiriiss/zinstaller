@@ -1,5 +1,9 @@
 const std = @import("std");
 
+pub fn print(comptime format: []const u8, args: anytype) !void {
+    try std.io.getStdOut().writer().print(format, args);
+}
+
 pub fn printCharN(c: u8, n: usize, writer: std.fs.File.Writer) !void {
     for (n) |_|
         _ = try writer.print("{c}", .{c});
