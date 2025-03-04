@@ -89,56 +89,76 @@ pub const PackageDescriptor = struct {
 
 const RawPackageDescriptor = struct { pkg: PackageDescriptor, indent: u8 };
 
-const ReadPackageError = error{ PackageTooLong, ReadError };
-
+pub const PackageLoadError = error{ FileNotFound, FileAccessDenied, UnkownError };
+pub const PackageParseError = error{
+    InvalidName,
+    InvalidDescription,
+};
 // Actual function that does all the loading
-pub fn loadPackages(filename: []const u8) ![]PackageDescriptor {
-    const raw = try loadRawPackagesFromFile(filename);
+pub fn loadPackages(filename: []const u8) (PackageLoadError || PackageParseError)![]PackageDescriptor {
+    const flags: std.fs.File.OpenFlags = .{ .mode = .read_only };
+
+    const file = std.fs.cwd().openFile(filename, flags) catch |err| {
+        const oerr = std.fs.File.OpenError;
+        switch (err) {
+            oerr.AccessDenied => return PackageLoadError.PackageFileAccessDenied,
+            oerr.FileNotFound => return PackageLoadError.PackageFileNotFound,
+            else => return PackageLoadError.UnkownError,
+        }
+    };
+
+    defer file.close();
+
+    const raw = loadRawPackagesFromFile(file);
     defer raw.deinit();
-    return try createPackageTree(raw.items);
+
+    return createPackageTree(raw.items);
 }
 
 // Loads packages without set dependencies yet
 // just parses the file and extracts the name and description along with indent of the package to help with package dependencies
-fn loadRawPackagesFromFile(filename: []const u8) !std.ArrayList(RawPackageDescriptor) {
-    const flags: std.fs.File.OpenFlags = .{ .mode = .read_only };
-    const file = try std.fs.cwd().openFile(filename, flags);
-    defer file.close();
-
-    const file_reader = file.reader();
-    var buf: [4096]u8 = undefined;
+fn loadRawPackagesFromFile(file: std.fs.File) !std.ArrayList(RawPackageDescriptor) {
+    const buffered = std.io.bufferedReader(file.reader());
+    const reader = buffered.reader();
 
     var packages = std.ArrayList(RawPackageDescriptor).init(std.heap.page_allocator);
 
     while (true) {
-        const slice = file_reader.readUntilDelimiterOrEof(&buf, '\n') catch |err| {
-            if (err == error.StreamTooLong)
-                return ReadPackageError.PackageTooLong
-            else
-                return ReadPackageError.ReadError;
+        if (reader.readUntilDelimiterOrEof('\n')) |line| {
+            const package = parseRawPackage(line);
+            try packages.append(package);
+        } else |err| {
+            const message = switch(err) {
+                PackageParseError.InvalidName => "Invalid name",
+                PackageParseError.InvalidDescription => "Invalid description"
+                util.IndentError.InvalidSpaceIndent => "Invalid indent"
+                else => "Unknown error
+            };
+            std.log.err("{s} of package. Line:{d} content: {s},.{message}
         };
-        // EOF
-        if (slice == null)
-            break;
 
-        var tokenizer = std.mem.tokenizeScalar(u8, slice.?, '=');
-        const nameToken = tokenizer.next();
-        const descriptionToken = tokenizer.next();
-        const indent = try util.countIndent(slice.?);
-
-        if (nameToken == null or descriptionToken == null) {
-            std.debug.print("Couldn't parse Package. LINE: {s}", .{slice.?});
-            continue;
-        }
-
-        const name = util.clipWhitespace(nameToken.?);
-        const description = util.clipWhitespace(descriptionToken.?);
-        const package = try PackageDescriptor.init(name, description, std.heap.page_allocator);
-
-        try packages.append(.{ .pkg = package, .indent = indent });
     }
 
     return packages;
+}
+
+fn parseRawPackage(line: []const u8) (PackageParseError || util.IndentError)!RawPackageDescriptor {
+    var tokenizer = std.mem.tokenizeScalar(u8, line, '=');
+    const nameToken = tokenizer.next();
+    const descriptionToken = tokenizer.next();
+    const indent = try util.countIndent(line);
+
+    if (nameToken == null)
+        return PackageParseError.InvalidName;
+
+    if (descriptionToken == null)
+        return PackageParseError.InvalidDescription;
+
+    const name = util.clipWhitespace(nameToken.?);
+    const description = util.clipWhitespace(descriptionToken.?);
+    const package = try PackageDescriptor.init(name, description, std.heap.page_allocator);
+
+    return RawPackageDescriptor{ .pkg = package, .indent = indent };
 }
 
 fn countChildren(items: []const RawPackageDescriptor) usize {
