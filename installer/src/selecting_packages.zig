@@ -16,24 +16,24 @@ const InputTokenType = enum {
 
 const InputToken = union(InputTokenType) { number: u32, range: Range };
 
-pub fn selectPackages(packages: []package.PackageDescriptor) ![]package.PackageDescriptor {
-    try printRecursive(selectPackages);
+pub fn selectPackages(packages: []package.PackageDescriptor, writer: anytype) ![]package.PackageDescriptor {
+    try printRecursive(packages, writer);
 
     while (true) {
-        util.print("Please numbers or ranges of desired packages (i.e \"1 2 3 5-8 19 72 420 13\")\n", .{});
-        util.print(">>> ", .{});
+        try util.print("Please enter numbers or ranges of desired packages (i.e \"1 2 3 5-8 19 72 420 13\")\n", .{});
+        try util.print(">>> ", .{});
         if (askForPackageNumbers()) |numbers| {
-            return filterSelectedPackages(packages, numbers);
+            return filterSelectedPackages(packages, numbers.items);
         } else |err| {
             switch (err) {
                 error.StreamTooLong => {
                     std.debug.print("Input string is too long\n", .{});
                 },
-                std.mem.Allocator.Error => {
+                std.mem.Allocator.Error.OutOfMemory => {
                     std.debug.print("Couldn't allocate memory, try again\n", .{});
                 },
-                error.NoEofError => {
-                    std.debug.print("No EOF, please try again\n", .{});
+                else => {
+                    std.debug.print("Unkown error encountered, try again\n", .{});
                 },
             }
         }
@@ -111,11 +111,13 @@ fn isSelected(index: usize, tokens: []const InputToken) bool {
     return false;
 }
 
-fn askForPackageNumbers() std.mem.Allocator.Error!std.ArrayList(InputToken) {
+fn askForPackageNumbers() !std.ArrayList(InputToken) {
     const stdin = std.io.getStdIn().reader();
 
-    const input = stdin.readUntilDelimiterAlloc(std.heap.page_allocator, '\n', 4096);
-    defer std.heap.page_allocator.free(input);
+    const inputRaw = try stdin.readUntilDelimiterAlloc(std.heap.page_allocator, '\n', 4096);
+    defer std.heap.page_allocator.free(inputRaw);
+
+    const input = util.clipWhitespace(inputRaw);
 
     const tokens = try parseSelectionInput(input);
     if (tokens.items.len <= 0) {
@@ -127,15 +129,16 @@ fn askForPackageNumbers() std.mem.Allocator.Error!std.ArrayList(InputToken) {
 }
 
 fn parseSelectionInput(input: []const u8) std.mem.Allocator.Error!std.ArrayList(InputToken) {
-    const tokens = std.ArrayList(InputToken).init(std.heap.page_allocator);
+    var tokens = std.ArrayList(InputToken).init(std.heap.page_allocator);
 
-    const tokenizer = std.mem.tokenizeScalar(u8, input, ' ');
+    std.debug.print("Input in prasing: {s}\n", .{input});
+    var tokenizer = std.mem.tokenizeScalar(u8, input, ' ');
 
     while (tokenizer.next()) |token| {
         if (parseToken(token)) |parsed_token|
             try tokens.append(parsed_token)
-        else
-            std.debug.print("Couldn't parse {s}. Skipping it...\n", .{token});
+        else |err|
+            std.debug.print("Couldn't parse \"{s}\" ({any}). Skipping it...\n", .{ token, err });
     }
 
     return tokens;
@@ -145,18 +148,23 @@ fn parseSelectionInput(input: []const u8) std.mem.Allocator.Error!std.ArrayList(
 ///
 /// On success returns a proper token
 /// On failure returns error.UnknownToken
-fn parseToken(strtoken: []const u8) !InputToken {
+fn parseToken(strtoken: []const u8) (error{UnknownToken})!InputToken {
     if (parseNumberToken(strtoken)) |n|
-        return n;
+        return n
+    else |_| {}
 
     if (parseRangeToken(strtoken)) |r|
-        return r;
+        return r
+    else |_| {}
+
+    std.log.warn("'{s}' Couldn't be parsed as number or range", .{strtoken});
 
     return error.UnknownToken;
 }
 
 fn parseNumberToken(str: []const u8) !InputToken {
-    return std.fmt.parseInt(u32, str, 10);
+    const number = try std.fmt.parseInt(u32, str, 10);
+    return InputToken{ .number = number };
 }
 
 fn parseRangeToken(str: []const u8) error{InvalidRange}!InputToken {

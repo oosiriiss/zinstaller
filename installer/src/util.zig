@@ -28,7 +28,7 @@ pub fn countIndent(s: []const u8) IndentError!u8 {
     if (s.len <= 0)
         return 0;
 
-    const INDENT_SPACE_COUNT = 4;
+    const INDENT_SPACE_COUNT = 3;
 
     var indents: u8 = 0;
 
@@ -68,11 +68,14 @@ fn validSpaceIndent(s: []const u8, comptime spaceCount: usize) IndentError!bool 
 }
 
 pub fn isWhitespace(c: u8) bool {
-    return c == '\t' or c == ' ' or c == '\n';
+    return c == '\t' or c == ' ' or c == '\n' or c == '\r';
 }
 
 // returns a slice without leading and trailing whitespace
 pub fn clipWhitespace(buf: []const u8) []const u8 {
+    if (buf.len <= 0)
+        return buf;
+
     var start: usize = 0;
     var end: usize = buf.len - 1;
 
@@ -82,5 +85,5 @@ pub fn clipWhitespace(buf: []const u8) []const u8 {
     while (isWhitespace(buf[end]))
         end = end - 1;
 
-    return buf[start..end];
+    return buf[start .. end + 1];
 }

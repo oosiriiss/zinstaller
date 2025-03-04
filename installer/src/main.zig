@@ -1,5 +1,6 @@
 const std = @import("std");
 const loading = @import("loading_packages.zig");
+const selecting = @import("selecting_packages.zig");
 
 pub fn main() !void {
     const PACKAGES_LIST_FILENAME = "packages.list";
@@ -12,5 +13,9 @@ pub fn main() !void {
         std.heap.page_allocator.free(packages);
     }
 
-    try packages[0].print(std.io.getStdOut().writer());
+    const selected = try selecting.selectPackages(packages, std.io.getStdOut().writer());
+
+    for (selected) |p| {
+        try p.debugPrint(std.io.getStdOut().writer());
+    }
 }

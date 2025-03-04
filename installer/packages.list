@@ -1,13 +1,13 @@
 grub = Bootloader
 sddm = Login manager
 pulseaudio = Sound server
-pavuconrtol = Sound mixer for pulse audio
+pavucontrol = Sound mixer for pulse audio
 waybar = top bar
 hyprpaper = Hyprland wallpaper support
 rofi-lbonn-wayland-git = Rofi with wayland support
 wlr-randr = randr wayland
 swaync = Notifications
-birghtnessctl = Changing screen birghtness
+brightnessctl = Changing screen birghtness
 nautilus = File manager/explorer
 nvidia-dkms = Nvidia graphics drivers
    egl-wayland = Idk some opengl nvidia support ??

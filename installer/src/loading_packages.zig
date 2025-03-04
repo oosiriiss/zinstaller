@@ -79,7 +79,7 @@ pub const PackageDescriptor = struct {
             try util.printCharN('\t', indent + 1, writer);
             _ = try writer.write("]\n");
         } else {
-            _ = try writer.write("dependencies: []");
+            _ = try writer.write("dependencies: []\n");
         }
 
         try util.printCharN('\t', indent, writer);
@@ -111,7 +111,7 @@ fn loadRawPackagesFromFile(filename: []const u8) !std.ArrayList(RawPackageDescri
     var packages = std.ArrayList(RawPackageDescriptor).init(std.heap.page_allocator);
 
     while (true) {
-        const slice = file_reader.readUntilDelimiterOrEof(&buf, ' ') catch |err| {
+        const slice = file_reader.readUntilDelimiterOrEof(&buf, '\n') catch |err| {
             if (err == error.StreamTooLong)
                 return ReadPackageError.PackageTooLong
             else
@@ -127,13 +127,13 @@ fn loadRawPackagesFromFile(filename: []const u8) !std.ArrayList(RawPackageDescri
         const indent = try util.countIndent(slice.?);
 
         if (nameToken == null or descriptionToken == null) {
-            std.debug.print("Couldn't parse Package. LINE: {s}", .{buf});
+            std.debug.print("Couldn't parse Package. LINE: {s}", .{slice.?});
             continue;
         }
 
         const name = util.clipWhitespace(nameToken.?);
         const description = util.clipWhitespace(descriptionToken.?);
-        const package = try PackageDescriptor.init(.{ .name = name, .description = description, .allocator = std.heap.page_allocator });
+        const package = try PackageDescriptor.init(name, description, std.heap.page_allocator);
 
         try packages.append(.{ .pkg = package, .indent = indent });
     }
