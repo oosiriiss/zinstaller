@@ -1,19 +1,25 @@
 const std = @import("std");
 const util = @import("util.zig");
 
-const PackageDescriptor = struct {
+pub const PackageDescriptor = struct {
     name: []const u8,
     description: []const u8,
     dependencies: ?[]PackageDescriptor,
 
     const Self = @This();
 
-    fn init(params: struct { name: []const u8, description: []const u8, allocator: std.mem.Allocator }) !PackageDescriptor {
-        const name = try params.allocator.dupe(u8, params.name);
-        errdefer params.allocator.free(name);
+    /// Creates new PackageDescriptor
+    /// name and description are copied
+    ///
+    /// dependencies = null
+    /// To set dependencies use <SetDependencies>
+    ///
+    pub fn init(p_name: []const u8, p_description: []const u8, allocator: std.mem.Allocator) !PackageDescriptor {
+        const name = try allocator.dupe(u8, p_name);
+        errdefer allocator.free(name);
 
-        const description = try params.allocator.dupe(u8, params.description);
-        errdefer params.allocator.free(description);
+        const description = try allocator.dupe(u8, p_description);
+        errdefer allocator.free(description);
 
         return Self{ .name = name, .description = description, .dependencies = null };
     }
@@ -51,13 +57,13 @@ const PackageDescriptor = struct {
         }
     }
 
-    // Prints the package
-    pub fn print(self: Self, writer: std.fs.File.Writer) !void {
-        try self.printWithIndent(0, writer);
+    /// Prints the package json-like
+    pub fn debugPrint(self: Self, writer: anytype) !void {
+        try self.debugPrintWithIndent(0, writer);
     }
 
-    // Print helper to tree-like printing with indents
-    fn printWithIndent(self: Self, indent: u8, writer: std.fs.File.Writer) !void {
+    /// Print helper to tree-like printing with indents
+    fn debugPrintWithIndent(self: Self, indent: u8, writer: anytype) !void {
         try util.printCharN('\t', indent, writer);
         _ = try writer.write("Package {\n");
         try util.printCharN('\t', indent + 1, writer);
@@ -68,7 +74,7 @@ const PackageDescriptor = struct {
         if (self.dependencies) |ds| {
             _ = try writer.write("dependencies: [\n");
             for (ds) |d|
-                try d.printWithIndent(indent + 2, writer);
+                try d.debugPrintWithIndent(indent + 2, writer);
 
             try util.printCharN('\t', indent + 1, writer);
             _ = try writer.write("]\n");
@@ -207,11 +213,6 @@ fn createPackageTree(pkgs: []const RawPackageDescriptor) ![]PackageDescriptor {
 
     return root_packages;
 }
-
-/////////////////////////////////
-////////////  TESTS   ///////////
-/////////////////////////////////
-
 test "Creatin Package tree with only 2 levels" {
     const pkgs = [_]RawPackageDescriptor{
         .{ .indent = 0, .pkg = PackageDescriptor{ .name = "P1", .description = "D1", .dependencies = null } },
@@ -293,5 +294,7 @@ test "Printing test" {
 
     const res = try createPackageTree(&pkgs);
 
-    try res[0].print(std.io.getStdOut().writer());
+    const writer = std.io.null_writer;
+
+    try res[0].debugPrint(writer);
 }
