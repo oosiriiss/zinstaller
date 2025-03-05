@@ -101,15 +101,15 @@ pub fn loadPackages(filename: []const u8) (PackageLoadError || PackageParseError
     const file = std.fs.cwd().openFile(filename, flags) catch |err| {
         const oerr = std.fs.File.OpenError;
         switch (err) {
-            oerr.AccessDenied => return PackageLoadError.PackageFileAccessDenied,
-            oerr.FileNotFound => return PackageLoadError.PackageFileNotFound,
+            oerr.AccessDenied => return PackageLoadError.FileAccessDenied,
+            oerr.FileNotFound => return PackageLoadError.FileNotFound,
             else => return PackageLoadError.UnkownError,
         }
     };
 
     defer file.close();
 
-    const raw = loadRawPackagesFromFile(file);
+    const raw = try loadRawPackagesFromFile(file);
     defer raw.deinit();
 
     return createPackageTree(raw.items);
@@ -118,25 +118,35 @@ pub fn loadPackages(filename: []const u8) (PackageLoadError || PackageParseError
 // Loads packages without set dependencies yet
 // just parses the file and extracts the name and description along with indent of the package to help with package dependencies
 fn loadRawPackagesFromFile(file: std.fs.File) !std.ArrayList(RawPackageDescriptor) {
-    const buffered = std.io.bufferedReader(file.reader());
-    const reader = buffered.reader();
+    var buffered = std.io.bufferedReader(file.reader());
+    var reader = buffered.reader();
 
     var packages = std.ArrayList(RawPackageDescriptor).init(std.heap.page_allocator);
 
+    var line_number: usize = 1;
+
     while (true) {
-        if (reader.readUntilDelimiterOrEof('\n')) |line| {
-            const package = parseRawPackage(line);
-            try packages.append(package);
-        } else |err| {
-            const message = switch(err) {
-                PackageParseError.InvalidName => "Invalid name",
-                PackageParseError.InvalidDescription => "Invalid description"
-                util.IndentError.InvalidSpaceIndent => "Invalid indent"
-                else => "Unknown error
-            };
-            std.log.err("{s} of package. Line:{d} content: {s},.{message}
+        const line = reader.readUntilDelimiterOrEof('\n') catch |err| {
+            std.log.err("Error when reading package file on line {d}", .{});
+            return err;
         };
 
+        const package = parseRawPackage(line) catch |err| {
+            const message = switch (err) {
+                PackageParseError.InvalidName => "Invalid name of package",
+                PackageParseError.InvalidDescription => "Invalid description of package",
+                util.IndentError.InvalidSpaceIndent => "Invalid indent of package. Indent should be " ++ std.fmt.comptimePrint(util.INDENT_SPACE_COUNT),
+                else => {
+                    std.log.err("Unknown error occurred \n", .{});
+                },
+            };
+            std.log.err("{s} Line:{d} content: {s}", .{ message, line, line });
+            return err;
+        };
+
+        try packages.append(package);
+
+        line_number = line_number + 1;
     }
 
     return packages;

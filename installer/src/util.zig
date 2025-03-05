@@ -1,5 +1,7 @@
 const std = @import("std");
 
+pub const INDENT_SPACE_COUNT = 3;
+
 pub fn print(comptime format: []const u8, args: anytype) !void {
     try std.io.getStdOut().writer().print(format, args);
 }
@@ -27,8 +29,6 @@ InvalidSpaceIndent};
 pub fn countIndent(s: []const u8) IndentError!u8 {
     if (s.len <= 0)
         return 0;
-
-    const INDENT_SPACE_COUNT = 3;
 
     var indents: u8 = 0;
 
