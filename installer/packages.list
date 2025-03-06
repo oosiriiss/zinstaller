@@ -14,5 +14,3 @@ nvidia-dkms = Nvidia graphics drivers
 hyprland-git = "Window manager"
    qt5-wayland = Qt5 wayland
    qt6-wayland = Qt6 wayland
-   
-

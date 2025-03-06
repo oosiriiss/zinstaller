@@ -30,7 +30,7 @@ pub const PackageDescriptor = struct {
     // Dependencies names,descriptions etc. must remain valid!
     // Sets the dependencies in reverse order last = first
     //
-    fn setDependencies(self: Self, deps: []RawPackageDescriptor, allocator: std.mem.Allocator) !Self {
+    fn setDependencies(self: Self, deps: []RawPackageDescriptor, allocator: std.mem.Allocator) std.mem.Allocator.Error!Self {
         if (deps.len == 0) {
             return self;
         }
@@ -90,20 +90,27 @@ pub const PackageDescriptor = struct {
 const RawPackageDescriptor = struct { pkg: PackageDescriptor, indent: u8 };
 
 pub const PackageLoadError = error{ FileNotFound, FileAccessDenied, UnkownError };
-pub const PackageParseError = error{
-    InvalidName,
-    InvalidDescription,
-};
+pub const PackageParseError = error{ InvalidName, InvalidDescription, UnknownError };
+
 // Actual function that does all the loading
-pub fn loadPackages(filename: []const u8) (PackageLoadError || PackageParseError)![]PackageDescriptor {
+pub fn loadPackages(filename: []const u8) (PackageLoadError || PackageParseError || util.IndentError || std.mem.Allocator.Error)![]PackageDescriptor {
     const flags: std.fs.File.OpenFlags = .{ .mode = .read_only };
 
     const file = std.fs.cwd().openFile(filename, flags) catch |err| {
         const oerr = std.fs.File.OpenError;
         switch (err) {
-            oerr.AccessDenied => return PackageLoadError.FileAccessDenied,
-            oerr.FileNotFound => return PackageLoadError.FileNotFound,
-            else => return PackageLoadError.UnkownError,
+            oerr.AccessDenied => {
+                std.log.err("Access to packages file: '{s}' denied", .{filename});
+                return PackageLoadError.FileAccessDenied;
+            },
+            oerr.FileNotFound => {
+                std.log.err("packages file '{s}' not found\n", .{filename});
+                return PackageLoadError.FileNotFound;
+            },
+            else => {
+                std.log.err("An unknown error occurred when trying to open file {s}", .{filename});
+                return PackageLoadError.UnkownError;
+            },
         }
     };
 
@@ -115,27 +122,51 @@ pub fn loadPackages(filename: []const u8) (PackageLoadError || PackageParseError
     return createPackageTree(raw.items);
 }
 
+// Define a wrapper struct to hold additional context.
+pub const ErrorWithMsg = struct {
+    err: anyerror,
+    msg: []const u8,
+};
+
 // Loads packages without set dependencies yet
 // just parses the file and extracts the name and description along with indent of the package to help with package dependencies
-fn loadRawPackagesFromFile(file: std.fs.File) !std.ArrayList(RawPackageDescriptor) {
+//
+// Function logs information if it encounters an error
+//
+fn loadRawPackagesFromFile(file: std.fs.File) (PackageParseError || std.mem.Allocator.Error || util.IndentError)!std.ArrayList(RawPackageDescriptor) {
     var buffered = std.io.bufferedReader(file.reader());
     var reader = buffered.reader();
+    var buffer: [4096]u8 = undefined;
 
     var packages = std.ArrayList(RawPackageDescriptor).init(std.heap.page_allocator);
 
     var line_number: usize = 1;
 
-    while (reader.readUntilDelimiterOrEof('\n')) |line| {
+    while (reader.readUntilDelimiterOrEof(&buffer, '\n')) |ln| {
+        if (ln == null)
+            break;
+        std.debug.assert(ln != null);
+
+        const line = ln.?;
+
+        // Package must have at least 3 chars
+        // 'N = D'
+        if (util.clipWhitespace(line).len <= 3)
+            continue;
+
         const package = parseRawPackage(line) catch |err| {
             const message = switch (err) {
                 PackageParseError.InvalidName => "Invalid name of package",
                 PackageParseError.InvalidDescription => "Invalid description of package",
-                util.IndentError.InvalidSpaceIndent => "Invalid indent of package. Indent should be " ++ std.fmt.comptimePrint(util.INDENT_SPACE_COUNT),
+                util.IndentError.InvalidSpaceIndent => "Invalid indent of package. Indent should be " ++ std.fmt.comptimePrint("{d}", .{
+                    util.INDENT_SPACE_COUNT,
+                }),
                 else => {
-                    std.log.err("Unknown error occurred \n", .{});
+                    std.log.err("Unknown error occurred on line {d} content: {s}\n", .{ line_number, line });
+                    return PackageParseError.UnknownError;
                 },
             };
-            std.log.err("{s} Line:{d} content: {s}", .{ message, line, line });
+            std.log.err("'{s}' Line:{d} content: '{s}'", .{ message, line_number, line });
             return err;
         };
 
@@ -143,14 +174,13 @@ fn loadRawPackagesFromFile(file: std.fs.File) !std.ArrayList(RawPackageDescripto
 
         line_number = line_number + 1;
     } else |err| {
-        std.log.err("Error when reading package file on line {d}", .{});
-        return err;
+        std.log.err("Error when reading package file on line {d}. err:{any}", .{ line_number, err });
+        return PackageParseError.UnknownError;
     }
-
     return packages;
 }
 
-fn parseRawPackage(line: []const u8) (PackageParseError || util.IndentError)!RawPackageDescriptor {
+fn parseRawPackage(line: []const u8) (PackageParseError || util.IndentError || std.mem.Allocator.Error)!RawPackageDescriptor {
     var tokenizer = std.mem.tokenizeScalar(u8, line, '=');
     const nameToken = tokenizer.next();
     const descriptionToken = tokenizer.next();
@@ -186,7 +216,7 @@ fn countChildren(items: []const RawPackageDescriptor) usize {
 }
 
 // Allcates all resources and returns a slice of the Packages
-fn createPackageTree(pkgs: []const RawPackageDescriptor) ![]PackageDescriptor {
+fn createPackageTree(pkgs: []const RawPackageDescriptor) std.mem.Allocator.Error![]PackageDescriptor {
     std.debug.assert(pkgs.len > 0);
 
     // Setting dependencies from the end
