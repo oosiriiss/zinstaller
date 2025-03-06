@@ -125,12 +125,7 @@ fn loadRawPackagesFromFile(file: std.fs.File) !std.ArrayList(RawPackageDescripto
 
     var line_number: usize = 1;
 
-    while (true) {
-        const line = reader.readUntilDelimiterOrEof('\n') catch |err| {
-            std.log.err("Error when reading package file on line {d}", .{});
-            return err;
-        };
-
+    while (reader.readUntilDelimiterOrEof('\n')) |line| {
         const package = parseRawPackage(line) catch |err| {
             const message = switch (err) {
                 PackageParseError.InvalidName => "Invalid name of package",
@@ -147,6 +142,9 @@ fn loadRawPackagesFromFile(file: std.fs.File) !std.ArrayList(RawPackageDescripto
         try packages.append(package);
 
         line_number = line_number + 1;
+    } else |err| {
+        std.log.err("Error when reading package file on line {d}", .{});
+        return err;
     }
 
     return packages;
