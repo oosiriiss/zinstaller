@@ -27,18 +27,17 @@ pub fn selectPackages(packages: []package.PackageDescriptor, writer: anytype) ![
         } else |err| {
             switch (err) {
                 error.StreamTooLong => {
-                    std.debug.print("Input string is too long\n", .{});
+                    std.log.warn("Input string is too long\n", .{});
                 },
                 std.mem.Allocator.Error.OutOfMemory => {
-                    std.debug.print("Couldn't allocate memory, try again\n", .{});
+                    std.log.warn("Couldn't allocate memory, try again\n", .{});
                 },
                 else => {
-                    std.debug.print("Unkown error encountered, try again\n", .{});
+                    std.log.warn("Unkown error encountered, try again\n", .{});
                 },
             }
         }
     }
-    //
 }
 
 fn printRecursive(packages: []const package.PackageDescriptor, writer: anytype) !void {
@@ -131,14 +130,13 @@ fn askForPackageNumbers() !std.ArrayList(InputToken) {
 fn parseSelectionInput(input: []const u8) std.mem.Allocator.Error!std.ArrayList(InputToken) {
     var tokens = std.ArrayList(InputToken).init(std.heap.page_allocator);
 
-    std.debug.print("Input in prasing: {s}\n", .{input});
     var tokenizer = std.mem.tokenizeScalar(u8, input, ' ');
 
     while (tokenizer.next()) |token| {
         if (parseToken(token)) |parsed_token|
             try tokens.append(parsed_token)
         else |err|
-            std.debug.print("Couldn't parse \"{s}\" ({any}). Skipping it...\n", .{ token, err });
+            std.log.warn("Couldn't parse \"{s}\" ({any}). Skipping it...\n", .{ token, err });
     }
 
     return tokens;
@@ -156,8 +154,6 @@ fn parseToken(strtoken: []const u8) (error{UnknownToken})!InputToken {
     if (parseRangeToken(strtoken)) |r|
         return r
     else |_| {}
-
-    std.log.warn("'{s}' Couldn't be parsed as number or range", .{strtoken});
 
     return error.UnknownToken;
 }

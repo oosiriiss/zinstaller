@@ -4,6 +4,7 @@ const selecting = @import("selecting_packages.zig");
 
 pub fn main() !void {
     const PACKAGES_LIST_FILENAME = "packages.list";
+    const CONFIGURATION_
 
     const packages = try loading.loadPackages(PACKAGES_LIST_FILENAME);
     defer {
