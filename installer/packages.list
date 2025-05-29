@@ -1,3 +1,13 @@
+
+
+if {
+   "Ligma bols" 
+} else {
+
+}
+
+
+
 grub = Bootloader
 sddm = Login manager
 pulseaudio = Sound server
