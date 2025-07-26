@@ -58,65 +58,234 @@ pub fn loadConfig(filename: []const u8) !void {
 
     const allow_whitespace = lexer.allow_whitespace_tokens;
     lexer.allow_whitespace_tokens = false;
-    const pkg = try parsePackage(&lexer);
+
+    var root_packages = std.ArrayList(PackageDescriptor).init(allocator);
+
+    while (lexer.peek() != null) {
+        const pkg = try parsePackage(&lexer);
+        try root_packages.append(pkg);
+    }
+
     lexer.allow_whitespace_tokens = allow_whitespace;
 
-    std.debug.print("Parse pacakge: {any}\n", .{pkg});
+    for (root_packages.items) |pkg| {
+        pkg.debugPrint();
+        std.debug.print("\n", .{});
+    }
 }
 
-pub const PackageParseError = error{ MissingPackageIdentifier, InvalidPackageIdentifier, InvalidSymbol, SyntaxError };
+pub const PackageParseError = error{ MissingPackageIdentifier, InvalidPackageIdentifier, InvalidSymbol, SyntaxError, MissingSemicolon };
 
-const PackageDescriptor = struct { name: []u8, description: ?[]u8, dependencies: ?[]PackageDescriptor };
+const PackageDescriptor = struct {
+    name: []u8,
+    description: ?[]u8,
+    dependencies: ?[]PackageDescriptor,
+
+    const Self = @This();
+    pub fn debugPrint(self: Self) void {
+        const desc = if (self.description) |d| d else "";
+
+        std.debug.print("Package(name='{s}', description='{s}', dependencies=[", .{ self.name, desc });
+
+        if (self.dependencies) |deps| {
+            for (0..deps.len) |i| {
+                deps[i].debugPrint();
+                if (i < deps.len - 1)
+                    std.debug.print(", ", .{});
+            }
+        }
+        std.debug.print("])", .{});
+    }
+};
+
+// Parses Array of packages. This function expects the initial '[' to be already used and not present in lexer.
+fn parsePackageArray(lexer: *lxr.Lexer(PackageLoadKeywords)) (PackageParseError || std.mem.Allocator.Error)!?[]PackageDescriptor {
+    const initial_token = lexer.peek() orelse return null;
+
+    // Empty array check
+    if (initial_token == .symbol and initial_token.symbol == lxr.Symbol.square_right) {
+        lexer.skipToken();
+        return null;
+    }
+
+    var packages = std.ArrayList(PackageDescriptor).init(std.heap.page_allocator);
+    // for the null return case. Should matter for toOwnedSlice().
+    defer packages.deinit();
+
+    while (lexer.peek()) |token| {
+        if (token == .symbol) {
+            if (token.symbol == lxr.Symbol.square_right) {
+                lexer.skipToken();
+                break;
+            }
+
+            if (token.symbol == lxr.Symbol.comma) {
+                lexer.skipToken();
+                // Continue allows for trailing commas in a list
+                continue;
+            }
+        }
+
+        const pkg = try parsePackage(lexer);
+        try packages.append(pkg);
+    }
+
+    return if (packages.items.len > 0) packages.toOwnedSlice() catch null else null;
+}
 
 fn parsePackage(lexer: *lxr.Lexer(PackageLoadKeywords)) (PackageParseError || std.mem.Allocator.Error)!PackageDescriptor {
-    {
-        const package_token = lexer.nextToken() orelse return PackageParseError.MissingPackageIdentifier;
-        std.debug.print("Initial token: {any}\n", .{package_token});
-        if (package_token != .keyword) return PackageParseError.MissingPackageIdentifier;
-        if (package_token.keyword != PackageLoadKeywords.package) return PackageParseError.InvalidPackageIdentifier;
-    }
+    std.debug.print("Package parsing started\n", .{});
+    // TODO :: Add syntax/error checking
+
+    lexer.assertKeyword(PackageLoadKeywords.package) catch return PackageParseError.MissingPackageIdentifier;
+    lexer.skipToken();
 
     var name: ?[]u8 = null;
     var description: ?[]u8 = null;
-    var dependencies = std.ArrayList(PackageDescriptor).init(std.heap.page_allocator);
-    // Deinit not needed since we copy the data into owned slice at the end but ill keep it here in case in change something
-    defer dependencies.deinit();
+    var dependencies: ?[]PackageDescriptor = null;
 
-    _ = lexer.assertSymbol(lxr.Symbol.curly_left) orelse return PackageParseError.SyntaxError;
+    lexer.assertSymbol(lxr.Symbol.curly_left) catch return PackageParseError.SyntaxError;
+    lexer.skipToken();
+
     while (lexer.nextToken()) |token| {
         std.debug.print("'identifier token': {any}\n", .{token});
         const identifier = if (token == .identifier) token.identifier else return PackageParseError.SyntaxError;
-        _ = lexer.assertSymbol(lxr.Symbol.equal) orelse return PackageParseError.InvalidSymbol;
-        const value_token = lexer.nextToken();
-        if (value_token == null) {
-            std.debug.print("Invalid value token encountered: {any}", .{value_token});
+        // Skipping '=' sign;
+        lexer.assertSymbol(lxr.Symbol.equal) catch return PackageParseError.InvalidSymbol;
+        lexer.skipToken();
+
+        const value_token = lexer.nextToken() orelse {
+            std.debug.print("Null token encountered where it wasn't expected.\n", .{});
             return PackageParseError.SyntaxError;
+        };
+
+        switch (value_token) {
+            .symbol => |s| {
+                if (s != lxr.Symbol.square_left or !std.mem.eql(u8, PACKAGE_DEPENDENCIES_FIELD, identifier)) {
+                    std.debug.panic("Invalid symbol:)", .{});
+                }
+                dependencies = parsePackageArray(lexer) catch {
+                    std.debug.panic("Couldn't parse package array\n", .{});
+                };
+            },
+            .string_literal => |str| {
+                // TODO :: Add handling memory errors:)
+
+                if (std.mem.eql(u8, PACKAGE_NAME_FIELD, identifier) and name == null) {
+                    name = std.heap.page_allocator.dupe(u8, str) catch null;
+                } else if (std.mem.eql(u8, PACKAGE_DESCRIPTION_FIELD, identifier) and description == null) {
+                    description = std.heap.page_allocator.dupe(u8, str) catch null;
+                }
+            },
+            else => {
+                std.debug.panic("Invalid token encountered when parsing package.\n", .{});
+            },
         }
 
-        if (value_token.? == .string_literal) {
-            const str = value_token.?.string_literal;
-            // TODO :: Add handling memory errors:)
+        // Expression final semicolon
+        lexer.assertSymbol(lxr.Symbol.semicolon) catch return PackageParseError.MissingSemicolon;
+        lexer.skipToken();
 
-            if (std.mem.eql(u8, PACKAGE_NAME_FIELD, identifier) and name == null) {
-                name = std.heap.page_allocator.dupe(u8, str) catch null;
-            } else if (std.mem.eql(u8, PACKAGE_DESCRIPTION_FIELD, identifier) and description == null) {
-                description = std.heap.page_allocator.dupe(u8, str) catch null;
-            }
-        } else if (value_token.? == .symbol) {
-            const symbol = value_token.?.symbol;
-            if (symbol == lxr.Symbol.square_left and std.mem.eql(u8, PACKAGE_DEPENDENCIES_FIELD, identifier)) {
-                std.debug.print("Dependencies field not supported yet\n", .{});
-                _ = lexer.assertSymbol(lxr.Symbol.square_right);
-            }
-        }
-        _ = lexer.assertSymbol(lxr.Symbol.semicolon);
-
-        const symbol = lexer.peekSymbol();
-
-        // TODO :: detect early invalid curly
-        if (symbol == lxr.Symbol.curly_right)
+        // If '}' is encountered the package parsing should be finished.
+        const s = lexer.peek();
+        if (s != null and s.? == .symbol and s.?.symbol == lxr.Symbol.curly_right) {
+            lexer.skipToken();
             break;
+        }
     }
 
-    return PackageDescriptor{ .name = name.?, .description = description, .dependencies = try dependencies.toOwnedSlice() };
+    std.debug.print("Package parsing finished successfully.\n", .{});
+    return PackageDescriptor{ .name = name.?, .description = description, .dependencies = dependencies };
+}
+
+test "Parsing package without dependencies" {
+    const test_content =
+        \\package {
+        \\ name = "test_name";
+        \\ description = "test_description";
+        \\ dependencies = [];
+        \\}
+    ;
+
+    var lexer = lxr.Lexer(PackageLoadKeywords).init(test_content, std.heap.page_allocator, package_load_kw_map);
+
+    const pkg = try parsePackage(&lexer);
+
+    try std.testing.expectEqualSlices(u8, "test_name", pkg.name);
+    try std.testing.expectEqualSlices(u8, "test_description", pkg.description.?);
+    try std.testing.expectEqual(null, pkg.dependencies);
+}
+
+test "Parsing a package with dependency" {
+    const test_content =
+        \\package {
+        \\      name = "test_name";
+        \\      description = "test_description";
+        \\      dependencies = [
+        \\           package {   
+        \\               name = "test_name";
+        \\               description = "test_description";
+        \\               dependencies = [];
+        \\           }
+        \\      ];
+        \\}
+    ;
+
+    var lexer = lxr.Lexer(PackageLoadKeywords).init(test_content, std.heap.page_allocator, package_load_kw_map);
+    const pkg = try parsePackage(&lexer);
+
+    try std.testing.expectEqualSlices(u8, "test_name", pkg.name);
+    try std.testing.expectEqualSlices(u8, "test_description", pkg.description.?);
+    try std.testing.expectEqual(1, pkg.dependencies.?.len);
+}
+
+test "Parsing a package with multiple dependencies" {
+    const test_content =
+        \\package {
+        \\      name = "test_name";
+        \\      description = "test_description";
+        \\      dependencies = [
+        \\           package {   
+        \\               name = "test_name";
+        \\               description = "test_description";
+        \\               dependencies = [];
+        \\           },
+        \\           package {   
+        \\               name = "test_name";
+        \\               description = "test_description";
+        \\               dependencies = [];
+        \\           }
+        \\      ];
+        \\}
+    ;
+
+    var lexer = lxr.Lexer(PackageLoadKeywords).init(test_content, std.heap.page_allocator, package_load_kw_map);
+    const pkg = try parsePackage(&lexer);
+
+    try std.testing.expectEqualSlices(u8, "test_name", pkg.name);
+    try std.testing.expectEqualSlices(u8, "test_description", pkg.description.?);
+    try std.testing.expectEqual(2, pkg.dependencies.?.len);
+}
+
+test "Parsing package with a trailing comma in dependencies" {
+    const test_content =
+        \\package {
+        \\      name = "test_name";
+        \\      description = "test_description";
+        \\      dependencies = [
+        \\           package {   
+        \\               name = "test_name";
+        \\               description = "test_description";
+        \\               dependencies = [];
+        \\           },
+        \\      ];
+        \\}
+    ;
+
+    var lexer = lxr.Lexer(PackageLoadKeywords).init(test_content, std.heap.page_allocator, package_load_kw_map);
+    const pkg = try parsePackage(&lexer);
+
+    try std.testing.expectEqualSlices(u8, "test_name", pkg.name);
+    try std.testing.expectEqualSlices(u8, "test_description", pkg.description.?);
+    try std.testing.expectEqual(1, pkg.dependencies.?.len);
 }

@@ -8,6 +8,7 @@ pub const Symbol = enum {
     square_right,
     equal,
     colon,
+    comma,
     semicolon,
     // for nicer printing
     new_line,
@@ -115,7 +116,6 @@ pub fn Lexer(comptime KEYWORDS: type) type {
                 return null;
 
             const curr_char = self.content[self.index];
-
             const token = switch (curr_char) {
                 '{' => {
                     self.index = self.index + 1;
@@ -144,6 +144,10 @@ pub fn Lexer(comptime KEYWORDS: type) type {
                         return TokenType{ .symbol = Symbol.new_line }
                     else
                         return null;
+                },
+                ',' => {
+                    self.index = self.index + 1;
+                    return TokenType{ .symbol = Symbol.comma };
                 },
                 ':' => {
                     self.index = self.index + 1;
@@ -183,22 +187,48 @@ pub fn Lexer(comptime KEYWORDS: type) type {
             return token;
         }
 
-        //  Advances to the next token and return it if it is the given symbol {symbol} or else returns null
-        pub fn assertSymbol(self: *Self, symbol: Symbol) ?Symbol {
-            const token = self.nextToken() orelse return null;
-            if (token != .symbol) return null;
-            if (token.symbol != symbol) return null;
-            return symbol;
+        // Asserts that the next token is expected symbol. doesn't advance the lexer.
+        pub fn assertSymbol(self: *Self, symbol: Symbol) !void {
+            const t = self.peek() orelse {
+                std.debug.print("Symbol {any} expected but got null token\n", .{symbol});
+                return error.SymbolAssertionFailed;
+            };
+            if (t != .symbol) {
+                std.debug.print("Token {any} isn't a symbol\n", .{t});
+                return error.SymbolAssertionFailed;
+            }
+            if (t.symbol != symbol) {
+                std.debug.print("Token {any} isn't expected symbol: {any}\n", .{ t, symbol });
+                return error.SymbolAssertionFailed;
+            }
         }
-        pub fn peekSymbol(self: *Self) ?Symbol {
+
+        // Asserts that the next token is expected keyword. doesn't advance the lexer.
+        pub fn assertKeyword(self: *Self, keyword: KEYWORDS) !void {
+            const t = self.peek() orelse {
+                std.debug.print("Kewyord {any} expected but got null token\n", .{keyword});
+                return error.KeywordAssertionFailed;
+            };
+            if (t != .keyword) {
+                std.debug.print("Token {any} isn't a Keyword\n", .{t});
+                return error.KeywordAssertionFailed;
+            }
+            if (t.keyword != keyword) {
+                std.debug.print("Token {any} isn't expected Keyword: {any}\n", .{ t, keyword });
+                return error.KeywordAssertionFailed;
+            }
+        }
+
+        pub fn peek(self: *Self) ?TokenType {
+            // TODO :: ????? Implement individual method for each token type like symbol etc. ?????
             const saved_index = self.index;
             const token = self.nextToken();
             self.index = saved_index;
+            return token;
+        }
 
-            if (token != null and token.? == .symbol) {
-                return token.?.symbol;
-            }
-            return null;
+        pub fn skipToken(self: *Self) void {
+            _ = self.nextToken();
         }
 
         fn readString(self: *Self) error{UnterminatedString}![]const u8 {
@@ -253,7 +283,7 @@ pub fn Lexer(comptime KEYWORDS: type) type {
         // if allow_whitespace_tokens is true it will skip all spaces etc. and still allow for indents and newlines
         fn skipWhitespace(self: *Self) void {
             // TODO :: Add indents
-            while (self.index < self.content.len){
+            while (self.index < self.content.len) {
                 if (self.allow_whitespace_tokens and self.content[self.index] == '\n')
                     break
                 else if (std.ascii.isWhitespace(self.content[self.index]))

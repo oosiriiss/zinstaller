@@ -1,26 +1,16 @@
+[
+   package {
+      name = "hyprland";
+      description = "Window manager";
+      dependencies = [
+         package {
+   	 
+         }
+      ];
+   },
+   package {
+      name = "sddm";
+      description = "Login manager";
+   }
+]
 
-
-if {
-   "Ligma bols" 
-} else {
-
-}
-
-
-
-grub = Bootloader
-sddm = Login manager
-pulseaudio = Sound server
-pavucontrol = Sound mixer for pulse audio
-waybar = top bar
-hyprpaper = Hyprland wallpaper support
-rofi-lbonn-wayland-git = Rofi with wayland support
-wlr-randr = randr wayland
-swaync = Notifications
-brightnessctl = Changing screen birghtness
-nautilus = File manager/explorer
-nvidia-dkms = Nvidia graphics drivers
-   egl-wayland = Idk some opengl nvidia support ??
-hyprland-git = "Window manager"
-   qt5-wayland = Qt5 wayland
-   qt6-wayland = Qt6 wayland
