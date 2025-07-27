@@ -2,12 +2,38 @@ const std = @import("std");
 
 pub const INDENT_SPACE_COUNT = 3;
 
+pub const IndentPrinter = struct {
+    indent: u8,
+    writer: std.io.AnyWriter,
+
+    const Self = @This();
+
+    // ignores all errors
+    pub fn printSilent(self: Self, comptime fmt: []const u8, args: anytype) void {
+        printCharN(' ', self.indent * 2, self.writer) catch {};
+        self.writer.print(fmt, args) catch {};
+    }
+
+    pub fn print(self: Self, comptime fmt: []const u8, args: anytype) !void {
+        try printCharN(' ', self.indent * 2, self.writer);
+        try self.writer.print(fmt, args);
+    }
+
+    pub fn increase(self: *Self) void {
+        self.indent = self.indent + 1;
+    }
+
+    pub fn decrease(self: *Self) void {
+        self.indent = self.indent - 1;
+    }
+};
+
 pub fn print(comptime format: []const u8, args: anytype) !void {
     try std.io.getStdOut().writer().print(format, args);
 }
 
 pub fn printCharN(c: u8, n: usize, writer: anytype) !void {
-    for (n) |_|
+    for (0..n) |_|
         _ = try writer.print("{c}", .{c});
 }
 
@@ -22,8 +48,8 @@ pub fn countChar(comptime str: []const u8, comptime char: u8) comptime_int {
 }
 
 pub const IndentError = error{
-// number of spaces doesn't match specfieid number of spaces in an indent
-InvalidSpaceIndent};
+    // number of spaces doesn't match specfieid number of spaces in an indent
+    InvalidSpaceIndent};
 
 // Counts numer of tabs or sequences of 4*space from the left of the slice
 pub fn countIndent(s: []const u8) IndentError!u8 {

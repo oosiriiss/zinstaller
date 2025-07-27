@@ -6,7 +6,7 @@ pub const Symbol = enum {
     curly_right,
     square_left,
     square_right,
-    equal,
+    assign,
     colon,
     comma,
     semicolon,
@@ -135,7 +135,7 @@ pub fn Lexer(comptime KEYWORDS: type) type {
                 },
                 '=' => {
                     self.index = self.index + 1;
-                    return TokenType{ .symbol = Symbol.equal };
+                    return TokenType{ .symbol = Symbol.assign };
                 },
                 '\n' => {
                     self.index = self.index + 1;
