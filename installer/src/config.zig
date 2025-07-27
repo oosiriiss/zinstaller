@@ -151,7 +151,7 @@ fn parsePackage(lexer: *lxr.Lexer(PackageLoadKeywords)) (PackageParseError || st
         std.debug.print("'identifier token': {any}\n", .{token});
         const identifier = if (token == .identifier) token.identifier else return PackageParseError.SyntaxError;
         // Skipping '=' sign;
-        lexer.assertSymbol(lxr.Symbol.equal) catch return PackageParseError.InvalidSymbol;
+        lexer.assertSymbol(lxr.Symbol.assignment) catch return PackageParseError.InvalidSymbol;
         lexer.skipToken();
 
         const value_token = lexer.nextToken() orelse {

@@ -219,6 +219,18 @@ pub fn Lexer(comptime KEYWORDS: type) type {
             }
         }
 
+        // Asserts that the  next token is an identifier. doesn't advance the lexer.
+        pub fn assertIdentifier(self: *Self) !void {
+            const t = self.peek() orelse {
+                std.debug.print("Identifier expected but got null\n", .{});
+                return error.IdentifierAssertionFailed;
+            };
+            if (t != .identifier) {
+                std.debug.print("Identifier expected but got {any}\n", .{t});
+                return error.IdentifierAssertionFailed;
+            }
+        }
+
         pub fn peek(self: *Self) ?TokenType {
             // TODO :: ????? Implement individual method for each token type like symbol etc. ?????
             const saved_index = self.index;
