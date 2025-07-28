@@ -22,6 +22,7 @@ pub const Value = union(enum) {
         self.debugPrintHelper(&printer);
     }
     fn debugPrintHelper(self: Self, printer: *util.IndentPrinter) void {
+
         // TODO :: fix this :)
         switch (self) {
             .object => |o| {
@@ -30,8 +31,10 @@ pub const Value = union(enum) {
 
                 printer.increase();
                 while (it.next()) |f| {
-                    printer.printSilent("{s} = ", .{f.key_ptr.*});
-                    f.value_ptr.debugPrint();
+                    printer.printSilent("{s} = \n", .{f.key_ptr.*});
+                    printer.increase();
+                    f.value_ptr.debugPrintHelper(printer);
+                    printer.decrease();
                 }
                 printer.decrease();
             },
@@ -41,15 +44,12 @@ pub const Value = union(enum) {
                 for (l) |val| {
                     val.debugPrintHelper(printer);
                 }
-                printer.printSilent("]\n", .{});
                 printer.decrease();
+                printer.printSilent("]\n", .{});
             },
             .string => |str| {
                 printer.printSilent("\"{s}\"\n", .{str});
             },
-            //else => {
-            //    std.debug.panic("Printing not implemented for other types :)\n", .{});
-            //},
         }
     }
 };

@@ -8,9 +8,11 @@ pub const IndentPrinter = struct {
 
     const Self = @This();
 
+
+
     // ignores all errors
     pub fn printSilent(self: Self, comptime fmt: []const u8, args: anytype) void {
-        printCharN(' ', self.indent * 2, self.writer) catch {};
+        printCharN(' ', self.indent * 4, self.writer) catch {};
         self.writer.print(fmt, args) catch {};
     }
 

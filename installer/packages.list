@@ -2,7 +2,11 @@
    package {
       name = "hyprland";
       description = "Window manager";
-      dependencies = [package {}];
+      dependencies = [
+	 package {
+	    
+	 }
+      ];
    },
    package {
       name = "sddm";
