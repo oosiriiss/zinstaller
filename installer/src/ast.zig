@@ -7,15 +7,47 @@ pub const Object = struct {
     name: []const u8,
     // Array better for smaller scopes? idk
     fields: std.StringHashMap(Value),
+
+    const Self = @This();
+
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+        allocator.free(self.name);
+
+        // Freeing the keys and values
+        var it = self.fields.iterator();
+        while (it.next()) |field| {
+            allocator.free(field.key_ptr.*);
+            field.value_ptr.deinit(allocator);
+        }
+
+        // Freeing the array
+        self.fields.deinit();
+    }
 };
 
 // better name would be expression or statement idk its enough for now
+//
+// It should own the memory of the fields.
+//
 pub const Value = union(enum) {
     string: []const u8,
     list: []Value,
     object: Object,
 
     const Self = @This();
+
+    // Frees this element and all of the subelements
+    pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
+        switch (self.*) {
+            .object => |*o| o.deinit(alloc),
+            .list => |*l| {
+                for (l.*) |*val| val.deinit(alloc);
+                alloc.free(l.*);
+                l.* = undefined;
+            },
+            .string => |str| alloc.free(str),
+        }
+    }
 
     pub fn debugPrint(self: Self) void {
         var printer = util.IndentPrinter{ .indent = 0, .writer = std.io.getStdErr().writer().any() };
@@ -31,7 +63,7 @@ pub const Value = union(enum) {
 
                 printer.increase();
                 while (it.next()) |f| {
-                    printer.printSilent("{s} = \n", .{f.key_ptr.*});
+                    printer.printSilent("{s}\n", .{f.key_ptr.*});
                     printer.increase();
                     f.value_ptr.debugPrintHelper(printer);
                     printer.decrease();
@@ -58,23 +90,32 @@ pub const Entry = struct {
     value: Value,
 };
 
+const AbstractSyntaxTree = struct {
+    root: Value,
+    alloc: std.mem.Allocator,
+
+    const Self = @This();
+
+    pub fn deinit(self: *Self) void {
+        self.root.deinit(self.alloc);
+    }
+};
+
 pub const ParseError = error{ AssignmentIdentifierMissing, AssignmentInvalidValue, AssignmentValueMissing, ObjectDuplicateField, SyntaxError, InvalidValue };
 
-pub fn AST(comptime KEYWORDS: type) type {
+pub fn Parser(comptime KEYWORDS: type) type {
     return comptime struct {
         lexer: *lxr.Lexer(KEYWORDS),
-        allocator: std.mem.Allocator,
+        alloc: std.mem.Allocator,
 
         const Self = @This();
 
         pub fn init(lexer: *lxr.Lexer(KEYWORDS), allocator: std.mem.Allocator) Self {
-            return .{ .lexer = lexer, .allocator = allocator };
+            return .{ .lexer = lexer, .alloc = allocator };
         }
-        pub fn build(self: *Self) ![]Value {
-            // root object may be only a list
-            self.lexer.assertSymbol(.square_left) catch return ParseError.SyntaxError;
 
-            return (try self.parseValue()).list;
+        pub fn build(self: *Self) !AbstractSyntaxTree {
+            return .{ .root = try self.parseValue(), .alloc = self.alloc };
         }
 
         //  As of now array of different type values is acceptable
@@ -82,9 +123,8 @@ pub fn AST(comptime KEYWORDS: type) type {
             self.lexer.assertSymbol(.square_left) catch return ParseError.SyntaxError;
             self.lexer.skipToken();
 
-            var items = std.ArrayList(Value).init(self.allocator);
-            // Deinit isn't needed since we turn the arraylist to owned slice at the end but it doesn't do anything wrong :)
-            defer items.deinit();
+            var items = std.ArrayList(Value).init(self.alloc);
+            errdefer items.deinit();
 
             while (self.lexer.peek()) |token| {
                 if (token == .symbol) {
@@ -112,7 +152,8 @@ pub fn AST(comptime KEYWORDS: type) type {
             self.lexer.assertSymbol(.curly_left) catch return ParseError.SyntaxError;
             self.lexer.skipToken();
 
-            var object = Object{ .name = try self.allocator.dupe(u8, identifier), .fields = std.StringHashMap(Value).init(self.allocator) };
+            var object = Object{ .name = try self.alloc.dupe(u8, identifier), .fields = std.StringHashMap(Value).init(self.alloc) };
+            errdefer object.deinit(self.alloc);
 
             while (self.lexer.peek()) |token| {
                 if (token == .symbol and token.symbol == .curly_right)
@@ -143,7 +184,7 @@ pub fn AST(comptime KEYWORDS: type) type {
             self.lexer.skipToken();
 
             const value = try self.parseValue();
-            return Entry{ .key = try self.allocator.dupe(u8, identifier), .value = value };
+            return Entry{ .key = try self.alloc.dupe(u8, identifier), .value = value };
         }
         fn parseValue(self: *Self) !Value {
             const value_token = self.lexer.peek() orelse return ParseError.SyntaxError;
@@ -151,7 +192,7 @@ pub fn AST(comptime KEYWORDS: type) type {
             switch (value_token) {
                 .string_literal => |str| {
                     self.lexer.skipToken();
-                    return Value{ .string = try self.allocator.dupe(u8, str) };
+                    return Value{ .string = try self.alloc.dupe(u8, str) };
                 },
                 .identifier => |ident| {
                     self.lexer.skipToken();
@@ -178,29 +219,20 @@ pub fn AST(comptime KEYWORDS: type) type {
     };
 }
 
-const TestKeywords = if (@import("builtin").is_test) enum {
-    if_keyword,
-    else_keyword,
-    switch_keyword,
-} else void;
-
-const test_keyword_map = if (@import("builtin").is_test) std.StaticStringMap(TestKeywords).initComptime([_]struct { []const u8, TestKeywords }{
-    .{ "if", TestKeywords.if_keyword },
-    .{ "else", TestKeywords.else_keyword },
-    .{ "switch", TestKeywords.switch_keyword },
-}) else void;
-
 test "Parsing string assignment" {
     const t1 =
         \\ huj = "Hello"; 
     ;
 
-    var l1 = lxr.Lexer(TestKeywords).init(t1, std.heap.page_allocator, test_keyword_map);
-    var ast = AST(TestKeywords).init(&l1, std.heap.page_allocator);
-    const e = try ast.parseAssignment();
+    var l1 = lxr.Lexer(void).init(t1, {});
+    var ast = Parser(void).init(&l1, std.testing.allocator);
+    var e = try ast.parseAssignment();
 
     try std.testing.expectEqualSlices(u8, "huj", e.key);
     try std.testing.expectEqualSlices(u8, "Hello", e.value.string);
+
+    std.testing.allocator.free(e.key);
+    e.value.deinit(std.testing.allocator);
 }
 
 test "Parsing empty object assignment" {
@@ -208,13 +240,16 @@ test "Parsing empty object assignment" {
         \\ huj = testobject {};
     ;
 
-    var l1 = lxr.Lexer(TestKeywords).init(t1, std.heap.page_allocator, test_keyword_map);
-    var ast = AST(TestKeywords).init(&l1, std.heap.page_allocator);
-    const e = try ast.parseAssignment();
+    var l1 = lxr.Lexer(void).init(t1, {});
+    var ast = Parser(void).init(&l1, std.testing.allocator);
+    var e = try ast.parseAssignment();
 
     try std.testing.expectEqualSlices(u8, "huj", e.key);
     try std.testing.expect(e.value == .object);
     try std.testing.expectEqualSlices(u8, "testobject", e.value.object.name);
+
+    std.testing.allocator.free(e.key);
+    e.value.deinit(std.testing.allocator);
 }
 
 test "Parsing object with fields assignment" {
@@ -222,9 +257,9 @@ test "Parsing object with fields assignment" {
         \\ huj = testobject { one = "one"; two = "two";};
     ;
 
-    var l1 = lxr.Lexer(TestKeywords).init(t1, std.heap.page_allocator, test_keyword_map);
-    var ast = AST(TestKeywords).init(&l1, std.heap.page_allocator);
-    const e = try ast.parseAssignment();
+    var l1 = lxr.Lexer(void).init(t1, {});
+    var ast = Parser(void).init(&l1, std.testing.allocator);
+    var e = try ast.parseAssignment();
 
     try std.testing.expectEqualSlices(u8, "huj", e.key);
     try std.testing.expect(e.value == .object);
@@ -232,6 +267,9 @@ test "Parsing object with fields assignment" {
     try std.testing.expect(e.value.object.fields.count() == 2);
     try std.testing.expectEqualSlices(u8, "one", e.value.object.fields.get("one").?.string);
     try std.testing.expectEqualSlices(u8, "two", e.value.object.fields.get("two").?.string);
+
+    std.testing.allocator.free(e.key);
+    e.value.deinit(std.testing.allocator);
 }
 
 test "Parsing list of strings" {
@@ -239,14 +277,20 @@ test "Parsing list of strings" {
         \\ [ "first","second","third" ];
     ;
 
-    var l1 = lxr.Lexer(TestKeywords).init(t1, std.heap.page_allocator, test_keyword_map);
-    var ast = AST(TestKeywords).init(&l1, std.heap.page_allocator);
-    const e = try ast.parseArray();
+    var l1 = lxr.Lexer(void).init(t1, {});
+    var ast = Parser(void).init(&l1, std.testing.allocator);
+    var e = try ast.parseArray();
 
     try std.testing.expectEqual(3, e.len);
     try std.testing.expectEqualSlices(u8, "first", e[0].string);
     try std.testing.expectEqualSlices(u8, "second", e[1].string);
     try std.testing.expectEqualSlices(u8, "third", e[2].string);
+
+    e[0].deinit(std.testing.allocator);
+    e[1].deinit(std.testing.allocator);
+    e[2].deinit(std.testing.allocator);
+
+    std.testing.allocator.free(e);
 }
 
 test "Parsing list of strings assignment" {
@@ -254,13 +298,16 @@ test "Parsing list of strings assignment" {
         \\ huj = [ "first","second","third" ];
     ;
 
-    var l1 = lxr.Lexer(TestKeywords).init(t1, std.heap.page_allocator, test_keyword_map);
-    var ast = AST(TestKeywords).init(&l1, std.heap.page_allocator);
-    const e = try ast.parseAssignment();
+    var l1 = lxr.Lexer(void).init(t1, {});
+    var ast = Parser(void).init(&l1, std.testing.allocator);
+    var e = try ast.parseAssignment();
 
     try std.testing.expectEqualSlices(u8, "huj", e.key);
     try std.testing.expect(e.value == .list);
     try std.testing.expectEqualSlices(u8, "first", e.value.list[0].string);
     try std.testing.expectEqualSlices(u8, "second", e.value.list[1].string);
     try std.testing.expectEqualSlices(u8, "third", e.value.list[2].string);
+
+    std.testing.allocator.free(e.key);
+    e.value.deinit(std.testing.allocator);
 }

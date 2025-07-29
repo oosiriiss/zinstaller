@@ -66,6 +66,7 @@ pub fn Token(comptime KEYWORDS: type) type {
     };
 }
 
+// The lexer doesn't allocate anything all the slices come directly from the source text.
 pub fn Lexer(comptime KEYWORDS: type) type {
     const TokenType = comptime Token(KEYWORDS);
 
@@ -76,18 +77,16 @@ pub fn Lexer(comptime KEYWORDS: type) type {
         content: []const u8,
         /// Current position inside content
         index: usize,
-        alloc: std.mem.Allocator,
         // Map of identifiers that will be mapped to keyword tokens
         keyword_map: KeywordMapType,
         allow_whitespace_tokens: bool,
 
         const Self = @This();
 
-        pub fn init(content: []const u8, alloc: std.mem.Allocator, keyword_map: KeywordMapType) Self {
+        pub fn init(content: []const u8, keyword_map: KeywordMapType) Self {
             return .{
                 .content = content,
                 .index = 0,
-                .alloc = alloc,
                 .keyword_map = keyword_map,
                 .allow_whitespace_tokens = false,
             };
@@ -342,8 +341,8 @@ test "Separating symbols" {
     const t1 = "{";
     const t2 = "}";
 
-    var l1 = Lexer(void).init(t1, std.heap.page_allocator, {});
-    var l2 = Lexer(void).init(t2, std.heap.page_allocator, {});
+    var l1 = Lexer(void).init(t1, {});
+    var l2 = Lexer(void).init(t2, {});
 
     const a1 = l1.nextToken().?;
     const a2 = l2.nextToken().?;
@@ -355,7 +354,7 @@ test "Separating symbols" {
 test "Separating longer tokens" {
     const t3 = "token";
 
-    var l3 = Lexer(void).init(t3, std.heap.page_allocator, {});
+    var l3 = Lexer(void).init(t3, {});
 
     const a3 = l3.nextToken().?;
 
@@ -365,7 +364,7 @@ test "Separating longer tokens" {
 test "Separating token chains tokens" {
     const sample_content = "{token} tokeninho";
 
-    var lexer = Lexer(void).init(sample_content, std.heap.page_allocator, {});
+    var lexer = Lexer(void).init(sample_content, {});
 
     const t1 = lexer.nextToken().?;
     const t2 = lexer.nextToken().?;
@@ -381,7 +380,7 @@ test "Separating token chains tokens" {
 test "Parsing keywords" {
     const sample_content = "if else switch";
 
-    var lexer = Lexer(TestKeywords).init(sample_content, std.heap.page_allocator, test_keyword_map);
+    var lexer = Lexer(TestKeywords).init(sample_content, test_keyword_map);
 
     const t1 = lexer.nextToken().?;
     const t2 = lexer.nextToken().?;

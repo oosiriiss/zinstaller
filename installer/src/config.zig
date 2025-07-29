@@ -60,6 +60,7 @@ pub fn loadConfig(filename: []const u8) !void {
     try file.seekTo(0);
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    // const allocator = arena.allocator();
     const allocator = arena.allocator();
 
     const file_content = try allocator.alloc(u8, file_size);
@@ -67,20 +68,21 @@ pub fn loadConfig(filename: []const u8) !void {
 
     _ = try file.readAll(file_content);
 
-    var lexer = lxr.Lexer(void).init(file_content, allocator, {});
+    var lexer = lxr.Lexer(void).init(file_content, {});
     lexer.allow_whitespace_tokens = false;
 
-    var parser = ast.AST(void).init(&lexer, allocator);
+    var parser = ast.Parser(void).init(&lexer, allocator);
 
-    const ast_tree = try parser.build();
+    var ast_tree = try parser.build();
+    defer ast_tree.deinit();
 
     std.debug.print("====================== AST  ====================\n", .{});
-    for (ast_tree) |node| {
+    for (ast_tree.root.list) |node| {
         node.debugPrint();
     }
     std.debug.print("================================================\n", .{});
 
-    const parsed = try createPackages(ast_tree);
+    const parsed = try createPackages(ast_tree.root.list);
 
     std.debug.print("================ Parsed Packages ===============\n", .{});
     for (parsed) |package| {
