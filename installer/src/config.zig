@@ -4,12 +4,6 @@ const ast = @import("ast.zig");
 
 pub const PackageLoadError = error{ FileNotFound, FileAccessDenied, UnkownError };
 
-const PackageLoadKeywords = enum {
-    if_keyword,
-};
-
-const package_load_kw_map = std.StaticStringMap(PackageLoadKeywords).initComptime([_]struct { []const u8, PackageLoadKeywords }{});
-
 const PACKAGE_OBJECT_NAME = "package";
 const PACKAGE_NAME_FIELD = "name";
 const PACKAGE_DESCRIPTION_FIELD = "description";
@@ -73,10 +67,10 @@ pub fn loadConfig(filename: []const u8) !void {
 
     _ = try file.readAll(file_content);
 
-    var lexer = lxr.Lexer(PackageLoadKeywords).init(file_content, allocator, package_load_kw_map);
+    var lexer = lxr.Lexer(void).init(file_content, allocator, {});
     lexer.allow_whitespace_tokens = false;
 
-    var parser = ast.AST(PackageLoadKeywords).init(&lexer, allocator);
+    var parser = ast.AST(void).init(&lexer, allocator);
 
     const ast_tree = try parser.build();
 

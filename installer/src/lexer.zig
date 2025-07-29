@@ -69,19 +69,21 @@ pub fn Token(comptime KEYWORDS: type) type {
 pub fn Lexer(comptime KEYWORDS: type) type {
     const TokenType = comptime Token(KEYWORDS);
 
+    const KeywordMapType = if (KEYWORDS != void) std.StaticStringMap(KEYWORDS) else void;
+
     return comptime struct {
         /// The content that is parsed
         content: []const u8,
         /// Current position inside content
         index: usize,
         alloc: std.mem.Allocator,
-        keyword_map: std.StaticStringMap(KEYWORDS),
+        // Map of identifiers that will be mapped to keyword tokens
+        keyword_map: KeywordMapType,
         allow_whitespace_tokens: bool,
 
         const Self = @This();
 
-        /// content must be valid as long as lexer lives
-        pub fn init(content: []const u8, alloc: std.mem.Allocator, keyword_map: std.StaticStringMap(KEYWORDS)) Self {
+        pub fn init(content: []const u8, alloc: std.mem.Allocator, keyword_map: KeywordMapType) Self {
             return .{
                 .content = content,
                 .index = 0,
@@ -90,8 +92,7 @@ pub fn Lexer(comptime KEYWORDS: type) type {
                 .allow_whitespace_tokens = false,
             };
         }
-
-        pub fn debugPrint(self: *Self) !void {
+        pub fn debugPrint(self: *Self) void {
             const saved_index = self.index;
             const saved_ws = self.allow_whitespace_tokens;
 
@@ -107,7 +108,6 @@ pub fn Lexer(comptime KEYWORDS: type) type {
         }
 
         // Returns a slice from self.content that should represent a single token
-        // Retuirns also newlines
         pub fn nextToken(self: *Self) ?TokenType {
             // Todo :: Add whitespace indent handling
             self.skipWhitespace();
@@ -172,6 +172,7 @@ pub fn Lexer(comptime KEYWORDS: type) type {
                 },
                 'a'...'z', 'A'...'Z' => {
                     const ident = self.readIdentifier();
+
                     if (parseKeyword(ident, self.keyword_map)) |kw| {
                         return TokenType{ .keyword = kw };
                     } else |_| {
@@ -271,12 +272,16 @@ pub fn Lexer(comptime KEYWORDS: type) type {
             return self.content[start_pos..self.index];
         }
 
-        fn parseKeyword(str_token: []const u8, kw_map: std.StaticStringMap(KEYWORDS)) ParseError!KEYWORDS {
-            if (kw_map.get(str_token)) |token| {
-                return token;
-            }
+        fn parseKeyword(str_token: []const u8, kw_map: KeywordMapType) ParseError!KEYWORDS {
+            if (comptime KeywordMapType == void) {
+                return ParseError.InvalidKeyword;
+            } else {
+                if (kw_map.get(str_token)) |token| {
+                    return token;
+                }
 
-            return ParseError.InvalidKeyword;
+                return ParseError.InvalidKeyword;
+            }
         }
 
         fn isSymbol(str_token: []const u8) bool {
@@ -337,8 +342,8 @@ test "Separating symbols" {
     const t1 = "{";
     const t2 = "}";
 
-    var l1 = Lexer(TestKeywords).init(t1, std.heap.page_allocator, test_keyword_map);
-    var l2 = Lexer(TestKeywords).init(t2, std.heap.page_allocator, test_keyword_map);
+    var l1 = Lexer(void).init(t1, std.heap.page_allocator, {});
+    var l2 = Lexer(void).init(t2, std.heap.page_allocator, {});
 
     const a1 = l1.nextToken().?;
     const a2 = l2.nextToken().?;
@@ -350,7 +355,7 @@ test "Separating symbols" {
 test "Separating longer tokens" {
     const t3 = "token";
 
-    var l3 = Lexer(TestKeywords).init(t3, std.heap.page_allocator, test_keyword_map);
+    var l3 = Lexer(void).init(t3, std.heap.page_allocator, {});
 
     const a3 = l3.nextToken().?;
 
@@ -360,7 +365,7 @@ test "Separating longer tokens" {
 test "Separating token chains tokens" {
     const sample_content = "{token} tokeninho";
 
-    var lexer = Lexer(TestKeywords).init(sample_content, std.heap.page_allocator, test_keyword_map);
+    var lexer = Lexer(void).init(sample_content, std.heap.page_allocator, {});
 
     const t1 = lexer.nextToken().?;
     const t2 = lexer.nextToken().?;
@@ -371,4 +376,18 @@ test "Separating token chains tokens" {
     try std.testing.expectEqualSlices(u8, "token", t2.identifier);
     try std.testing.expectEqual(Symbol.curly_right, t3.symbol);
     try std.testing.expectEqualSlices(u8, "tokeninho", t4.identifier);
+}
+
+test "Parsing keywords" {
+    const sample_content = "if else switch";
+
+    var lexer = Lexer(TestKeywords).init(sample_content, std.heap.page_allocator, test_keyword_map);
+
+    const t1 = lexer.nextToken().?;
+    const t2 = lexer.nextToken().?;
+    const t3 = lexer.nextToken().?;
+
+    try std.testing.expectEqual(TestKeywords.if_keyword, t1.keyword);
+    try std.testing.expectEqual(TestKeywords.else_keyword, t2.keyword);
+    try std.testing.expectEqual(TestKeywords.switch_keyword, t3.keyword);
 }
