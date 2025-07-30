@@ -1,5 +1,5 @@
 const std = @import("std");
-const package = @import("loading_packages.zig");
+const PackageDescriptor = @import("load_packages.zig").PackageDescriptor;
 const util = @import("util.zig");
 
 const Range = struct {
@@ -16,63 +16,51 @@ const InputTokenType = enum {
 
 const InputToken = union(InputTokenType) { number: u32, range: Range };
 
-pub fn selectPackages(packages: []package.PackageDescriptor, writer: anytype) ![]package.PackageDescriptor {
-    try printRecursive(packages, writer);
+pub fn selectPackages(packages: []PackageDescriptor, writer: std.io.AnyWriter) ![]PackageDescriptor {
+    for (packages, 1..) |p, i| {
+        try writer.print("{d}. ", .{i});
+        try p.formatShort(writer);
+        _ = try writer.write("\n");
+    }
 
     while (true) {
         try util.print("Please enter numbers or ranges of desired packages (i.e \"1 2 3 5-8 19 72 420 13\")\n", .{});
         try util.print(">>> ", .{});
-        if (askForPackageNumbers()) |numbers| {
-            return filterSelectedPackages(packages, numbers.items);
-        } else |err| {
-            switch (err) {
-                error.StreamTooLong => {
-                    std.log.warn("Input string is too long\n", .{});
-                },
-                std.mem.Allocator.Error.OutOfMemory => {
-                    std.log.warn("Couldn't allocate memory, try again\n", .{});
-                },
-                else => {
-                    std.log.warn("Unkown error encountered, try again\n", .{});
-                },
-            }
-        }
+
+        const numbers = askForPackageNumbers() catch continue;
+
+        validateSelectedPackages(numbers.items, packages.len) catch {
+            if (util.askConfirmation("Validation failed, do you want to redo selection? (All invalid choices will be ignored) (y/n) ", .{}))
+                continue;
+        };
+
+        return filterSelectedPackages(packages, numbers.items);
     }
 }
 
-fn printRecursive(packages: []const package.PackageDescriptor, writer: anytype) !void {
-    const PkgIndent = struct { indent: u8, pkg: package.PackageDescriptor };
+fn validateSelectedPackages(tokens: []const InputToken, package_count: usize) !void {
+    var failed = false;
 
-    var stack = try std.ArrayList(PkgIndent).initCapacity(std.heap.page_allocator, packages.len + 10);
-
-    // Reverse to maintain the correct printing order of packages
-    for (0..packages.len) |i| {
-        try stack.append(.{ .indent = 0, .pkg = packages[packages.len - 1 - i] });
-    }
-
-    var current_index: usize = 0;
-
-    while (stack.items.len > 0) {
-        const item = stack.pop();
-        const current_package = item.pkg;
-        const current_indent = item.indent;
-
-        try util.printCharN('\t', current_indent, writer);
-
-        if (current_indent == 0) {
-            try writer.print("{d}. ", .{current_index});
-            current_index = current_index + 1;
-        }
-
-        try writer.print("{s} - {s}\n", .{ current_package.name, current_package.description });
-
-        if (current_package.dependencies) |deps| {
-            for (0..deps.len) |i| {
-                // Reverse to maintain the correct printing order of packages
-                try stack.append(.{ .indent = current_indent + 1, .pkg = deps[deps.len - 1 - i] });
-            }
+    for (tokens) |token| {
+        switch (token) {
+            .range => |r| {
+                if (r.end > package_count or r.start > package_count) {
+                    // Writer failing here doesn't matter
+                    std.log.warn("Range {d}-{d} goes over allowed package number equal to {d}", .{ r.start, r.end, package_count });
+                    failed = true;
+                }
+            },
+            .number => |v| {
+                if (v > package_count) {
+                    std.log.warn("Package number {d} goes over allowed package number equal to {d}", .{ v, package_count });
+                    failed = true;
+                }
+            },
         }
     }
+
+    if (failed)
+        return error.ValidationFailed;
 }
 
 ///
@@ -81,12 +69,12 @@ fn printRecursive(packages: []const package.PackageDescriptor, writer: anytype) 
 ///
 /// Returns a slice with selected packages
 ///
-fn filterSelectedPackages(packages: []package.PackageDescriptor, tokens: []const InputToken) ![]package.PackageDescriptor {
+fn filterSelectedPackages(packages: []PackageDescriptor, tokens: []const InputToken) ![]PackageDescriptor {
     var current_index: usize = 0;
 
     for (0..packages.len) |i| {
         if (isSelected(i, tokens)) {
-            std.mem.swap(package.PackageDescriptor, &packages[current_index], &packages[i]);
+            std.mem.swap(PackageDescriptor, &packages[current_index], &packages[i]);
             current_index = current_index + 1;
         }
     }
@@ -111,32 +99,42 @@ fn isSelected(index: usize, tokens: []const InputToken) bool {
 }
 
 fn askForPackageNumbers() !std.ArrayList(InputToken) {
-    const stdin = std.io.getStdIn().reader();
+    var buf: [256]u8 = undefined;
 
-    const inputRaw = try stdin.readUntilDelimiterAlloc(std.heap.page_allocator, '\n', 4096);
-    defer std.heap.page_allocator.free(inputRaw);
+    const line_raw = util.readLine(&buf) catch |err| {
+        std.log.err("Couldn't read input", .{});
+        return err;
+    };
 
-    const input = util.clipWhitespace(inputRaw);
+    const input = util.clipWhitespace(line_raw);
 
-    const tokens = try parseSelectionInput(input);
+    const tokens = parseSelectionInput(input) catch |err| {
+        std.log.err("There was an error when parsing input (err:{})", .{err});
+        return err;
+    };
+
     if (tokens.items.len <= 0) {
         tokens.deinit();
-        std.debug.print("Please insert valid numbers\n", .{});
+        util.print("Please try again anda insert valid package numbers.\n", .{}) catch {};
+        return error.InvalidInput;
     }
 
     return tokens;
 }
 
-fn parseSelectionInput(input: []const u8) std.mem.Allocator.Error!std.ArrayList(InputToken) {
+fn parseSelectionInput(input: []const u8) (std.mem.Allocator.Error)!std.ArrayList(InputToken) {
     var tokens = std.ArrayList(InputToken).init(std.heap.page_allocator);
+    errdefer tokens.deinit();
 
     var tokenizer = std.mem.tokenizeScalar(u8, input, ' ');
 
     while (tokenizer.next()) |token| {
-        if (parseToken(token)) |parsed_token|
-            try tokens.append(parsed_token)
-        else |err|
-            std.log.warn("Couldn't parse \"{s}\" ({any}). Skipping it...\n", .{ token, err });
+        const parsed = parseToken(token) catch |err| {
+            std.log.err("Couldn't parse \"{s}\" (err: {any}). Skipping it...", .{ token, err });
+            continue;
+        };
+
+        try tokens.append(parsed);
     }
 
     return tokens;
@@ -146,7 +144,7 @@ fn parseSelectionInput(input: []const u8) std.mem.Allocator.Error!std.ArrayList(
 ///
 /// On success returns a proper token
 /// On failure returns error.UnknownToken
-fn parseToken(strtoken: []const u8) (error{UnknownToken})!InputToken {
+fn parseToken(strtoken: []const u8) (error{InvalidToken})!InputToken {
     if (parseNumberToken(strtoken)) |n|
         return n
     else |_| {}
@@ -155,11 +153,11 @@ fn parseToken(strtoken: []const u8) (error{UnknownToken})!InputToken {
         return r
     else |_| {}
 
-    return error.UnknownToken;
+    return error.InvalidToken;
 }
 
 fn parseNumberToken(str: []const u8) !InputToken {
-    const number = try std.fmt.parseInt(u32, str, 10);
+    const number = try std.fmt.parseUnsigned(u32, str, 10);
     return InputToken{ .number = number };
 }
 
@@ -182,8 +180,6 @@ fn parseRangeToken(str: []const u8) error{InvalidRange}!InputToken {
 }
 
 test "Filtering packages" {
-    const PackageDescriptor = package.PackageDescriptor;
-
     const tokens = [_]InputToken{
         InputToken{ .number = 0 },
         InputToken{ .number = 1 },
@@ -275,61 +271,4 @@ test "Not enough components in range" {
 
     const res2 = parseRangeToken("asd-");
     try std.testing.expectError(error.InvalidRange, res2);
-}
-
-test "Recursive enumrated print" {
-    const PackageDescriptor = package.PackageDescriptor;
-
-    var deps1_deps = [_]PackageDescriptor{ //
-    PackageDescriptor{ .name = "P1_DEP1_DEP1_NAME", .description = "P1_DEP1_DEP1_DESC", .dependencies = null }};
-
-    var deps1 = [_]PackageDescriptor{ //
-    PackageDescriptor{
-        .name = "P1_DEP1_NAME",
-        .description = "P1_DEP1_DESC",
-        //
-        .dependencies = &deps1_deps,
-    }};
-
-    var deps2_deps2_deps = [_]PackageDescriptor{PackageDescriptor{ .name = "P2_DEP2_DEP1_NAME", .description = "P2_DEP2_DEP1_DESC", .dependencies = null }};
-
-    var deps2_deps = [_]PackageDescriptor{ //
-        PackageDescriptor{ .name = "P2_DEP1_DEP1_NAME", .description = "P2_DEP1_DEP1_DESC", .dependencies = null },
-        PackageDescriptor{
-            .name = "P2_DEP2_NAME",
-            .description = "P2_DEP2_DESC",
-            //
-            .dependencies = &deps2_deps2_deps,
-        },
-    };
-
-    var deps2 = [_]PackageDescriptor{ //
-    PackageDescriptor{
-        .name = "P2_DEP1_NAME",
-        .description = "P2_DEP1_DESC",
-        //
-        .dependencies = &deps2_deps,
-    }};
-
-    var packages = [_]PackageDescriptor{
-        PackageDescriptor{
-            .name = "P1",
-            .description = "D1",
-            //
-            .dependencies = &deps1,
-        },
-
-        PackageDescriptor{
-            .name = "P2",
-            .description = "D2",
-            .dependencies = &deps2,
-        },
-        PackageDescriptor{ .name = "P3", .description = "D3", .dependencies = null },
-        PackageDescriptor{ .name = "P4", .description = "D4", .dependencies = null },
-        PackageDescriptor{ .name = "P5", .description = "D5", .dependencies = null },
-        PackageDescriptor{ .name = "P6", .description = "D6", .dependencies = null },
-        PackageDescriptor{ .name = "P7", .description = "D7", .dependencies = null },
-    };
-
-    try printRecursive(&packages, std.io.null_writer);
 }

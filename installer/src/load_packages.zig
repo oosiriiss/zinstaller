@@ -11,9 +11,9 @@ const PACKAGE_DEPENDENCIES_FIELD = "dependencies";
 
 const PackageError = error{InvalidFormat};
 
-const PackageDescriptor = struct {
-    name: []u8,
-    description: ?[]u8,
+pub const PackageDescriptor = struct {
+    name: []const u8,
+    description: ?[]const u8,
     dependencies: ?[]PackageDescriptor,
 
     const Self = @This();
@@ -31,9 +31,20 @@ const PackageDescriptor = struct {
         }
         std.debug.print("])", .{});
     }
+    pub fn formatShort(self: Self, writer: std.io.AnyWriter) !void {
+        const desc = if (self.description) |d| d else "???";
+
+        try writer.print("{s:^10} - {s:<20} - Dependencies {d}", .{ self.name, desc, self.countDependencies() });
+    }
+    fn countDependencies(self: Self) u32 {
+        if (self.dependencies == null) return 0;
+        var sum: u32 = 0;
+        for (self.dependencies.?) |dep| sum = sum + dep.countDependencies();
+        return sum;
+    }
 };
 
-pub fn loadConfig(filename: []const u8) !void {
+pub fn loadPackages(filename: []const u8) ![]PackageDescriptor {
     const flags: std.fs.File.OpenFlags = .{ .mode = .read_only };
 
     const file = std.fs.cwd().openFile(filename, flags) catch |err| {
@@ -59,9 +70,7 @@ pub fn loadConfig(filename: []const u8) !void {
     const file_size = try file.getEndPos();
     try file.seekTo(0);
 
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    // const allocator = arena.allocator();
-    const allocator = arena.allocator();
+    const allocator = std.heap.page_allocator;
 
     const file_content = try allocator.alloc(u8, file_size);
     defer allocator.free(file_content);
@@ -76,13 +85,13 @@ pub fn loadConfig(filename: []const u8) !void {
     var ast_tree = try parser.build();
     defer ast_tree.deinit();
 
+    const parsed = try createPackages(ast_tree.root.list);
+
     std.debug.print("====================== AST  ====================\n", .{});
     for (ast_tree.root.list) |node| {
         node.debugPrint();
     }
     std.debug.print("================================================\n", .{});
-
-    const parsed = try createPackages(ast_tree.root.list);
 
     std.debug.print("================ Parsed Packages ===============\n", .{});
     for (parsed) |package| {
@@ -90,6 +99,8 @@ pub fn loadConfig(filename: []const u8) !void {
         std.debug.print("\n", .{});
     }
     std.debug.print("================================================\n", .{});
+
+    return parsed;
 }
 
 fn createPackages(ast_tree: []ast.Value) (PackageError || std.mem.Allocator.Error)![]PackageDescriptor {
@@ -149,21 +160,20 @@ const test_keyword_map = if (@import("builtin").is_test) std.StaticStringMap(Tes
 
 test "Creating package without dependencies from AST" {
     const content =
-        \\ [
         \\package {
         \\   name = "hyprland";
         \\   description = "Window manager";
         \\   dependencies = [];
         \\}
-        \\]
     ;
 
-    var l = lxr.Lexer(TestKeywords).init(content, std.heap.page_allocator, test_keyword_map);
-    var builder = ast.AST(TestKeywords).init(&l, std.heap.page_allocator);
+    var l = lxr.Lexer(void).init(content, {});
+    var builder = ast.Parser(void).init(&l, std.testing.allocator);
 
-    const tree = try builder.build();
+    var tree = try builder.build();
+    defer tree.deinit();
 
-    const package = try createPackage(tree[0]);
+    const package = try createPackage(tree.root);
 
     try std.testing.expectEqualSlices(u8, package.name, "hyprland");
     try std.testing.expectEqualSlices(u8, package.description.?, "Window manager");
@@ -172,7 +182,6 @@ test "Creating package without dependencies from AST" {
 
 test "Creating package with single object dependency from AST" {
     const content =
-        \\ [
         \\package {
         \\   name = "hyprland";
         \\   description = "Window manager";
@@ -184,15 +193,15 @@ test "Creating package with single object dependency from AST" {
         \\      }
         \\   ];
         \\}
-        \\]
     ;
 
-    var l = lxr.Lexer(TestKeywords).init(content, std.heap.page_allocator, test_keyword_map);
-    var builder = ast.AST(TestKeywords).init(&l, std.heap.page_allocator);
+    var l = lxr.Lexer(void).init(content, {});
+    var builder = ast.Parser(void).init(&l, std.heap.page_allocator);
 
-    const tree = try builder.build();
+    var tree = try builder.build();
+    defer tree.deinit();
 
-    const package = try createPackage(tree[0]);
+    const package = try createPackage(tree.root);
 
     try std.testing.expectEqualSlices(u8, package.name, "hyprland");
     try std.testing.expectEqualSlices(u8, package.description.?, "Window manager");
@@ -204,7 +213,6 @@ test "Creating package with single object dependency from AST" {
 
 test "Creating package with multiple object dependency from AST" {
     const content =
-        \\ [
         \\package {
         \\   name = "hyprland";
         \\   description = "Window manager";
@@ -221,15 +229,14 @@ test "Creating package with multiple object dependency from AST" {
         \\      }
         \\   ];
         \\}
-        \\]
     ;
 
-    var l = lxr.Lexer(TestKeywords).init(content, std.heap.page_allocator, test_keyword_map);
-    var builder = ast.AST(TestKeywords).init(&l, std.heap.page_allocator);
+    var l = lxr.Lexer(void).init(content, {});
+    var builder = ast.Parser(void).init(&l, std.heap.page_allocator);
 
     const tree = try builder.build();
 
-    const package = try createPackage(tree[0]);
+    const package = try createPackage(tree.root);
 
     try std.testing.expectEqualSlices(u8, package.name, "hyprland");
     try std.testing.expectEqualSlices(u8, package.description.?, "Window manager");
