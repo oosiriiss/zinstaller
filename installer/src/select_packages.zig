@@ -1,6 +1,7 @@
 const std = @import("std");
 const PackageDescriptor = @import("load_packages.zig").PackageDescriptor;
 const util = @import("util.zig");
+const cli = @import("cli.zig");
 
 const Range = struct {
     /// Inclusive
@@ -16,6 +17,7 @@ const InputTokenType = enum {
 
 const InputToken = union(InputTokenType) { number: u32, range: Range };
 
+// Modifies the origina slice and puts the selected packages at the beginning (and returns the new slice)
 pub fn selectPackages(packages: []PackageDescriptor, writer: std.io.AnyWriter) ![]PackageDescriptor {
     for (packages, 1..) |p, i| {
         try writer.print("{d}. ", .{i});
@@ -30,7 +32,7 @@ pub fn selectPackages(packages: []PackageDescriptor, writer: std.io.AnyWriter) !
         const numbers = askForPackageNumbers() catch continue;
 
         validateSelectedPackages(numbers.items, packages.len) catch {
-            if (util.askConfirmation("Validation failed, do you want to redo selection? (All invalid choices will be ignored) (y/n) ", .{}))
+            if (cli.askConfirmation("Validation failed, do you want to redo selection? (All invalid choices will be ignored) (y/n) ", .{}))
                 continue;
         };
 

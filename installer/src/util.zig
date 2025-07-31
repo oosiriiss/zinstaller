@@ -66,31 +66,44 @@ pub fn readLine(buffer: []u8) ![]u8 {
     }
 }
 
-pub fn askConfirmation(comptime msg: []const u8, args: anytype) bool {
-    // TODO :: Should this return an error?
+const OpenError = error{ AccessDenied, NotFound, UnknownError };
 
-    var buf: [64]u8 = undefined;
-
-    while (true) {
-        std.io.getStdOut().writer().print(msg, args) catch continue;
-
-        if (readLine(&buf)) |lineRaw| {
-            const lowered_line = std.ascii.lowerString(&buf, lineRaw);
-            const line = clipWhitespace(lowered_line);
-
-            // Defaults to confirmation
-            if (line.len == 0)
-                return true;
-
-            if (std.mem.eql(u8, line, "y"))
-                return true;
-
-            if (line.len >= 3 and std.mem.eql(u8, line[0..3], "yes"))
-                return true;
-
-            return false;
-        } else |err| {
-            std.debug.print("Error encountered when reading input. Try Again. (error: {any})\n", .{err});
+// Utility method for opening a file, Handles basic errors by printing to the stdout
+pub fn openFileReadonly(path: []const u8) OpenError!std.fs.File {
+    const flags: std.fs.File.OpenFlags = .{ .mode = .read_only };
+    const file = std.fs.cwd().openFile(path, flags) catch |err| {
+        const oerr = std.fs.File.OpenError;
+        switch (err) {
+            oerr.AccessDenied => {
+                std.log.err("Access to file: '{s}' denied", .{path});
+                return OpenError.AccessDenied;
+            },
+            oerr.FileNotFound => {
+                std.log.err("File '{s}' not found\n", .{path});
+                return OpenError.NotFound;
+            },
+            else => {
+                std.log.err("An unknown error occurred when trying to open file {s}", .{path});
+                return OpenError.UnknownError;
+            },
         }
-    }
+    };
+    return file;
+}
+
+pub fn getFileSize(file: std.fs.File) !u64 {
+    const saved_pos = try file.getPos();
+    const file_size = try file.getEndPos();
+    try file.seekTo(saved_pos);
+
+    return file_size;
+}
+
+pub fn readAllAlloc(file: std.fs.File, alloc: std.mem.Allocator) ![]const u8 {
+    const file_size = try getFileSize(file);
+
+    const file_content = try alloc.alloc(u8, file_size);
+    _ = try file.readAll(file_content);
+
+    return file_content;
 }

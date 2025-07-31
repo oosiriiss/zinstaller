@@ -1,6 +1,7 @@
 const std = @import("std");
 const lxr = @import("lexer.zig");
 const ast = @import("ast.zig");
+const util = @import("util.zig");
 
 pub const PackageLoadError = error{ FileNotFound, FileAccessDenied, UnkownError };
 
@@ -44,60 +45,42 @@ pub const PackageDescriptor = struct {
     }
 };
 
-pub fn loadPackages(filename: []const u8) ![]PackageDescriptor {
-    const flags: std.fs.File.OpenFlags = .{ .mode = .read_only };
-
-    const file = std.fs.cwd().openFile(filename, flags) catch |err| {
-        const oerr = std.fs.File.OpenError;
-        switch (err) {
-            oerr.AccessDenied => {
-                std.log.err("Access to packages file: '{s}' denied", .{filename});
-                return PackageLoadError.FileAccessDenied;
-            },
-            oerr.FileNotFound => {
-                std.log.err("packages file '{s}' not found\n", .{filename});
-                return PackageLoadError.FileNotFound;
-            },
-            else => {
-                std.log.err("An unknown error occurred when trying to open file {s}", .{filename});
-                return PackageLoadError.UnkownError;
-            },
-        }
-    };
-
+pub fn loadPackages(filename: []const u8, alloc: std.mem.Allocator) ![]PackageDescriptor {
+    const file = try util.openFileReadonly(filename);
     defer file.close();
 
     const file_size = try file.getEndPos();
     try file.seekTo(0);
 
-    const allocator = std.heap.page_allocator;
 
-    const file_content = try allocator.alloc(u8, file_size);
-    defer allocator.free(file_content);
+    const file_content = try alloc.alloc(u8, file_size);
+    defer alloc.free(file_content);
 
     _ = try file.readAll(file_content);
 
     var lexer = lxr.Lexer.init(file_content);
 
-    var parser = ast.Parser.init(&lexer, allocator);
+    var parser = ast.Parser.init(&lexer, alloc);
 
     var ast_tree = try parser.build();
     defer ast_tree.deinit();
 
     const parsed = try createPackages(ast_tree.root.list);
 
-    std.debug.print("====================== AST  ====================\n", .{});
-    for (ast_tree.root.list) |node| {
-        node.debugPrint();
-    }
-    std.debug.print("================================================\n", .{});
+    if (comptime @import("builtin").mode == .Debug) {
+        std.debug.print("====================== AST  ====================\n", .{});
+        for (ast_tree.root.list) |node| {
+            node.debugPrint();
+        }
+        std.debug.print("================================================\n", .{});
 
-    std.debug.print("================ Parsed Packages ===============\n", .{});
-    for (parsed) |package| {
-        package.debugPrint();
-        std.debug.print("\n", .{});
+        std.debug.print("================ Parsed Packages ===============\n", .{});
+        for (parsed) |package| {
+            package.debugPrint();
+            std.debug.print("\n", .{});
+        }
+        std.debug.print("================================================\n", .{});
     }
-    std.debug.print("================================================\n", .{});
 
     return parsed;
 }

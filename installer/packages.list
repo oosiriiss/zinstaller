@@ -1,13 +1,12 @@
 [
-
-   
    package {
+      // Name of the package that will be used when downloading it
       name = "hyprland";
+      // Optional description displayed in a list (May not be present)
       description = "Window manager";
+      // Optional list of dependecy packages (May not be present)
       dependencies = [
-	 package {
-	    
-	 }
+	 package {}
       ];
    },
    package {
@@ -15,4 +14,6 @@
       description = "Login manager";
    }
 ]
+
+
 

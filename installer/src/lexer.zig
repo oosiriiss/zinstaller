@@ -138,7 +138,7 @@ pub const Lexer = struct {
                 }
                 return null;
             },
-            'a'...'z', 'A'...'Z' => {
+            '_', 'a'...'z', 'A'...'Z' => {
                 const ident = self.readIdentifier();
 
                 if (parseKeyword(ident)) |kw| {
@@ -149,7 +149,7 @@ pub const Lexer = struct {
                 }
             },
             else => {
-                std.debug.panic("Unknown token encountered: {c}, int_code: {d}", .{ curr_char, @as(i32, curr_char) });
+                std.debug.panic("Unknown token encountered: '{c}' (int_code: {d})", .{ curr_char, @as(i32, curr_char) });
                 return null;
             },
         };
@@ -258,7 +258,7 @@ pub const Lexer = struct {
     fn readIdentifier(self: *Self) []const u8 {
         const start_pos = self.index;
 
-        while (self.index < self.content.len and std.ascii.isAlphanumeric(self.content[self.index]))
+        while (self.index < self.content.len and (std.ascii.isAlphanumeric(self.content[self.index]) or self.content[self.index] == '_'))
             self.index = self.index + 1;
 
         return self.content[start_pos..self.index];
