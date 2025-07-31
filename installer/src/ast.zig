@@ -103,129 +103,127 @@ const AbstractSyntaxTree = struct {
 
 pub const ParseError = error{ AssignmentIdentifierMissing, AssignmentInvalidValue, AssignmentValueMissing, ObjectDuplicateField, SyntaxError, InvalidValue };
 
-pub fn Parser(comptime KEYWORDS: type) type {
-    return comptime struct {
-        lexer: *lxr.Lexer(KEYWORDS),
-        alloc: std.mem.Allocator,
+pub const Parser = struct {
+    lexer: *lxr.Lexer,
+    alloc: std.mem.Allocator,
 
-        const Self = @This();
+    const Self = @This();
 
-        pub fn init(lexer: *lxr.Lexer(KEYWORDS), allocator: std.mem.Allocator) Self {
-            return .{ .lexer = lexer, .alloc = allocator };
-        }
+    pub fn init(lexer: *lxr.Lexer, allocator: std.mem.Allocator) Self {
+        return .{ .lexer = lexer, .alloc = allocator };
+    }
 
-        pub fn build(self: *Self) !AbstractSyntaxTree {
-            return .{ .root = try self.parseValue(), .alloc = self.alloc };
-        }
+    pub fn build(self: *Self) !AbstractSyntaxTree {
+        return .{ .root = try self.parseValue(), .alloc = self.alloc };
+    }
 
-        //  As of now array of different type values is acceptable
-        fn parseArray(self: *Self) (ParseError || std.mem.Allocator.Error)![]Value {
-            self.lexer.assertSymbol(.square_left) catch return ParseError.SyntaxError;
-            self.lexer.skipToken();
+    //  As of now array of different type values is acceptable
+    fn parseArray(self: *Self) (ParseError || std.mem.Allocator.Error)![]Value {
+        self.lexer.assertSymbol(.square_left) catch return ParseError.SyntaxError;
+        self.lexer.skipToken();
 
-            var items = std.ArrayList(Value).init(self.alloc);
-            errdefer items.deinit();
+        var items = std.ArrayList(Value).init(self.alloc);
+        errdefer items.deinit();
 
-            while (self.lexer.peek()) |token| {
-                if (token == .symbol) {
-                    if (token.symbol == .square_right)
-                        break
-                    else if (token.symbol == .comma) {
-                        self.lexer.skipToken();
-                        continue;
-                    }
+        while (self.lexer.peek()) |token| {
+            if (token == .symbol) {
+                if (token.symbol == .square_right)
+                    break
+                else if (token.symbol == .comma) {
+                    self.lexer.skipToken();
+                    continue;
                 }
-
-                const value = try self.parseValue();
-
-                try items.append(value);
             }
-
-            self.lexer.assertSymbol(.square_right) catch return ParseError.SyntaxError;
-            self.lexer.skipToken();
-
-            return try items.toOwnedSlice();
-        }
-
-        // Copies the identifier into the object name field
-        fn parseObject(self: *Self, identifier: []const u8) (ParseError || std.mem.Allocator.Error)!Object {
-            self.lexer.assertSymbol(.curly_left) catch return ParseError.SyntaxError;
-            self.lexer.skipToken();
-
-            var object = Object{ .name = try self.alloc.dupe(u8, identifier), .fields = std.StringHashMap(Value).init(self.alloc) };
-            errdefer object.deinit(self.alloc);
-
-            while (self.lexer.peek()) |token| {
-                if (token == .symbol and token.symbol == .curly_right)
-                    break;
-
-                const entry = try self.parseAssignment();
-                self.lexer.assertSymbol(.semicolon) catch return ParseError.SyntaxError;
-                self.lexer.skipToken();
-
-                object.fields.putNoClobber(entry.key, entry.value) catch return ParseError.ObjectDuplicateField;
-            }
-
-            self.lexer.assertSymbol(.curly_right) catch return ParseError.SyntaxError;
-            self.lexer.skipToken();
-
-            return object;
-        }
-        // Parses just 3 tokenes (NAME, '=', VALUE), doesn't skip the semicolon.
-        fn parseAssignment(self: *Self) (ParseError || std.mem.Allocator.Error)!Entry {
-
-            // any identifier is ok
-            self.lexer.assertIdentifier() catch return ParseError.AssignmentIdentifierMissing;
-
-            const ident_token = self.lexer.nextToken() orelse return ParseError.AssignmentIdentifierMissing;
-            const identifier = ident_token.identifier;
-
-            self.lexer.assertSymbol(.assign) catch return ParseError.SyntaxError;
-            self.lexer.skipToken();
 
             const value = try self.parseValue();
-            return Entry{ .key = try self.alloc.dupe(u8, identifier), .value = value };
+
+            try items.append(value);
         }
-        fn parseValue(self: *Self) !Value {
-            const value_token = self.lexer.peek() orelse return ParseError.SyntaxError;
 
-            switch (value_token) {
-                .string_literal => |str| {
-                    self.lexer.skipToken();
-                    return Value{ .string = try self.alloc.dupe(u8, str) };
-                },
-                .identifier => |ident| {
-                    self.lexer.skipToken();
+        self.lexer.assertSymbol(.square_right) catch return ParseError.SyntaxError;
+        self.lexer.skipToken();
 
-                    if (self.lexer.assertSymbol(.curly_left)) {
-                        // Object
-                        return Value{ .object = try self.parseObject(ident) };
-                    } else |_| {
-                        // Variable assignemnt
-                        std.debug.panic("Assignment to identifiers not implemented\n", .{});
-                    }
-                },
-                .symbol => |s| {
-                    if (s == .square_left) return Value{ .list = try self.parseArray() };
+        return try items.toOwnedSlice();
+    }
 
-                    return ParseError.SyntaxError;
-                },
-                else => {
-                    std.debug.print("Invalid value token when parsing: {any}\n", .{value_token});
-                    return ParseError.InvalidValue;
-                },
-            }
+    // Copies the identifier into the object name field
+    fn parseObject(self: *Self, identifier: []const u8) (ParseError || std.mem.Allocator.Error)!Object {
+        self.lexer.assertSymbol(.curly_left) catch return ParseError.SyntaxError;
+        self.lexer.skipToken();
+
+        var object = Object{ .name = try self.alloc.dupe(u8, identifier), .fields = std.StringHashMap(Value).init(self.alloc) };
+        errdefer object.deinit(self.alloc);
+
+        while (self.lexer.peek()) |token| {
+            if (token == .symbol and token.symbol == .curly_right)
+                break;
+
+            const entry = try self.parseAssignment();
+            self.lexer.assertSymbol(.semicolon) catch return ParseError.SyntaxError;
+            self.lexer.skipToken();
+
+            object.fields.putNoClobber(entry.key, entry.value) catch return ParseError.ObjectDuplicateField;
         }
-    };
-}
+
+        self.lexer.assertSymbol(.curly_right) catch return ParseError.SyntaxError;
+        self.lexer.skipToken();
+
+        return object;
+    }
+    // Parses just 3 tokenes (NAME, '=', VALUE), doesn't skip the semicolon.
+    fn parseAssignment(self: *Self) (ParseError || std.mem.Allocator.Error)!Entry {
+
+        // any identifier is ok
+        self.lexer.assertIdentifier() catch return ParseError.AssignmentIdentifierMissing;
+
+        const ident_token = self.lexer.nextToken() orelse return ParseError.AssignmentIdentifierMissing;
+        const identifier = ident_token.identifier;
+
+        self.lexer.assertSymbol(.assign) catch return ParseError.SyntaxError;
+        self.lexer.skipToken();
+
+        const value = try self.parseValue();
+        return Entry{ .key = try self.alloc.dupe(u8, identifier), .value = value };
+    }
+    fn parseValue(self: *Self) !Value {
+        const value_token = self.lexer.peek() orelse return ParseError.SyntaxError;
+
+        switch (value_token) {
+            .string_literal => |str| {
+                self.lexer.skipToken();
+                return Value{ .string = try self.alloc.dupe(u8, str) };
+            },
+            .identifier => |ident| {
+                self.lexer.skipToken();
+
+                if (self.lexer.assertSymbol(.curly_left)) {
+                    // Object
+                    return Value{ .object = try self.parseObject(ident) };
+                } else |_| {
+                    // Variable assignemnt
+                    std.debug.panic("Assignment to identifiers not implemented\n", .{});
+                }
+            },
+            .symbol => |s| {
+                if (s == .square_left) return Value{ .list = try self.parseArray() };
+
+                return ParseError.SyntaxError;
+            },
+            else => {
+                std.debug.print("Invalid value token when parsing: {any}\n", .{value_token});
+                return ParseError.InvalidValue;
+            },
+        }
+    }
+};
 
 test "Parsing string assignment" {
     const t1 =
         \\ huj = "Hello"; 
     ;
 
-    var l1 = lxr.Lexer(void).init(t1, {});
-    var ast = Parser(void).init(&l1, std.testing.allocator);
+    var l1 = lxr.Lexer.init(t1);
+    var ast = Parser.init(&l1, std.testing.allocator);
     var e = try ast.parseAssignment();
 
     try std.testing.expectEqualSlices(u8, "huj", e.key);
@@ -240,8 +238,8 @@ test "Parsing empty object assignment" {
         \\ huj = testobject {};
     ;
 
-    var l1 = lxr.Lexer(void).init(t1, {});
-    var ast = Parser(void).init(&l1, std.testing.allocator);
+    var l1 = lxr.Lexer.init(t1);
+    var ast = Parser.init(&l1, std.testing.allocator);
     var e = try ast.parseAssignment();
 
     try std.testing.expectEqualSlices(u8, "huj", e.key);
@@ -257,8 +255,8 @@ test "Parsing object with fields assignment" {
         \\ huj = testobject { one = "one"; two = "two";};
     ;
 
-    var l1 = lxr.Lexer(void).init(t1, {});
-    var ast = Parser(void).init(&l1, std.testing.allocator);
+    var l1 = lxr.Lexer.init(t1);
+    var ast = Parser.init(&l1, std.testing.allocator);
     var e = try ast.parseAssignment();
 
     try std.testing.expectEqualSlices(u8, "huj", e.key);
@@ -277,8 +275,8 @@ test "Parsing list of strings" {
         \\ [ "first","second","third" ];
     ;
 
-    var l1 = lxr.Lexer(void).init(t1, {});
-    var ast = Parser(void).init(&l1, std.testing.allocator);
+    var l1 = lxr.Lexer.init(t1);
+    var ast = Parser.init(&l1, std.testing.allocator);
     var e = try ast.parseArray();
 
     try std.testing.expectEqual(3, e.len);
@@ -298,8 +296,8 @@ test "Parsing list of strings assignment" {
         \\ huj = [ "first","second","third" ];
     ;
 
-    var l1 = lxr.Lexer(void).init(t1, {});
-    var ast = Parser(void).init(&l1, std.testing.allocator);
+    var l1 = lxr.Lexer.init(t1);
+    var ast = Parser.init(&l1, std.testing.allocator);
     var e = try ast.parseAssignment();
 
     try std.testing.expectEqualSlices(u8, "huj", e.key);

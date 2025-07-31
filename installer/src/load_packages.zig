@@ -77,10 +77,9 @@ pub fn loadPackages(filename: []const u8) ![]PackageDescriptor {
 
     _ = try file.readAll(file_content);
 
-    var lexer = lxr.Lexer(void).init(file_content, {});
-    lexer.allow_whitespace_tokens = false;
+    var lexer = lxr.Lexer.init(file_content);
 
-    var parser = ast.Parser(void).init(&lexer, allocator);
+    var parser = ast.Parser.init(&lexer, allocator);
 
     var ast_tree = try parser.build();
     defer ast_tree.deinit();
@@ -146,18 +145,6 @@ fn createPackage(val: ast.Value) (PackageError || std.mem.Allocator.Error)!Packa
     return pkg;
 }
 
-const TestKeywords = if (@import("builtin").is_test) enum {
-    if_keyword,
-    else_keyword,
-    switch_keyword,
-} else void;
-
-const test_keyword_map = if (@import("builtin").is_test) std.StaticStringMap(TestKeywords).initComptime([_]struct { []const u8, TestKeywords }{
-    .{ "if", TestKeywords.if_keyword },
-    .{ "else", TestKeywords.else_keyword },
-    .{ "switch", TestKeywords.switch_keyword },
-}) else void;
-
 test "Creating package without dependencies from AST" {
     const content =
         \\package {
@@ -167,7 +154,7 @@ test "Creating package without dependencies from AST" {
         \\}
     ;
 
-    var l = lxr.Lexer(void).init(content, {});
+    var l = lxr.Lexer.init(content);
     var builder = ast.Parser(void).init(&l, std.testing.allocator);
 
     var tree = try builder.build();
@@ -195,7 +182,7 @@ test "Creating package with single object dependency from AST" {
         \\}
     ;
 
-    var l = lxr.Lexer(void).init(content, {});
+    var l = lxr.Lexer.init(content);
     var builder = ast.Parser(void).init(&l, std.heap.page_allocator);
 
     var tree = try builder.build();
@@ -231,7 +218,7 @@ test "Creating package with multiple object dependency from AST" {
         \\}
     ;
 
-    var l = lxr.Lexer(void).init(content, {});
+    var l = lxr.Lexer.init(content);
     var builder = ast.Parser(void).init(&l, std.heap.page_allocator);
 
     const tree = try builder.build();
