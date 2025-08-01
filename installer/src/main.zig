@@ -2,10 +2,11 @@ const std = @import("std");
 const loadPackages = @import("load_packages.zig").loadPackages;
 const selectPackages = @import("select_packages.zig").selectPackages;
 const loadConfig = @import("load_config.zig").loadConfig;
+const downloadPackages = @import("setup_packages.zig").downloadPackages;
 
 pub fn main() !void {
     const PACKAGES_LIST_PATH = "./packages.list";
-    const CONFIG_PATH = "./installer.config";
+    const CONFIG_PATH = "./installer.cfg";
 
     const alloc = std.heap.page_allocator;
 
@@ -17,5 +18,5 @@ pub fn main() !void {
 
     const selected_packages = try selectPackages(packages, std.io.getStdOut().writer().any());
 
-    _ = selected_packages;
+    try downloadPackages(selected_packages);
 }

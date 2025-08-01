@@ -1,5 +1,6 @@
 const std = @import("std");
 const PackageDescriptor = @import("load_packages.zig").PackageDescriptor;
+const util = @import("util.zig");
 
 fn calculateDownloadStringLength(packages: []const PackageDescriptor) usize {
     var length: usize = 0;
@@ -39,8 +40,38 @@ fn prepareDownloadString(packages: []const PackageDescriptor, alloc: std.mem.All
 pub fn downloadPackages(packages: []const PackageDescriptor) !void {
     const alloc = std.heap.page_allocator;
 
-    const download_string = prepareDownloadString(packages, alloc);
+    const download_string = try prepareDownloadString(packages, alloc);
     defer alloc.free(download_string);
+
+    // For now only yay supported :)
+    try assertYayExists();
+    try performYaySync();
+
+    for (packages) |package| {
+        try downloadPackage(package);
+    }
+}
+
+fn assertYayExists() !void {
+    try util.runCommand(&[_][]const u8{ "yay", "--version" });
+    std.log.info("Yay Found", .{});
+}
+
+fn performYaySync() !void {
+    std.log.info("Syncing yay", .{});
+    try util.runSilentCommand(&[_][]const u8{ "yay", "-Sy" });
+    std.log.info("Yay -Sy", .{});
+}
+
+fn downloadPackage(package: PackageDescriptor) !void {
+    std.log.info("Downloading package: {s}", .{package.name});
+
+    util.runCommand(&[_][]const u8{ "yay", "-S", package.name }) catch {
+        std.log.info("Download Failed", .{});
+        return error.DownloadFailed;
+    };
+
+    std.log.info("Download success", .{});
 }
 
 test "Calculating length for download string" {

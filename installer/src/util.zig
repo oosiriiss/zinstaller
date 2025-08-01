@@ -107,3 +107,22 @@ pub fn readAllAlloc(file: std.fs.File, alloc: std.mem.Allocator) ![]const u8 {
 
     return file_content;
 }
+
+pub fn runSilentCommand(argv: []const []const u8) !void {
+    var child = std.process.Child.init(argv, std.heap.page_allocator);
+    child.stdout_behavior = .Ignore;
+    const exit = try child.spawnAndWait();
+
+    if (exit == .Exited and exit.Exited == 0) return;
+
+    return error.ProgramFailed;
+}
+
+pub fn runCommand(argv: []const []const u8) !void {
+    var child = std.process.Child.init(argv, std.heap.page_allocator);
+    const exit = try child.spawnAndWait();
+
+    if (exit == .Exited and exit.Exited == 0) return;
+
+    return error.ProgramFailed;
+}

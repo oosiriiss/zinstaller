@@ -3,16 +3,23 @@ const lxr = @import("lexer.zig");
 const ast = @import("ast.zig");
 const util = @import("util.zig");
 
-const SCRIPTS_PATH_FIELD = "scripts_path";
+const SCRIPTS_DIR_FIELD = "scripts_dir";
+const PACKAGES_PATH_FIELD = "packages_file";
+const DOTFILES_DIR_FIELD = "dotfiles_dir";
 
 const Config = struct {
-    scripts_path: []const u8,
+    scripts_dir: []const u8,
+    dotfiles_dir: []const u8,
+    packages_path: []const u8,
+
     alloc: std.mem.Allocator,
 
     const Self = @This();
 
     pub fn deinit(self: Self) void {
-        self.alloc.free(self.scripts_path);
+        self.alloc.free(self.scripts_dir);
+        self.alloc.free(self.dotfiles_dir);
+        self.alloc.free(self.packages_path);
     }
 };
 
@@ -48,8 +55,11 @@ pub fn loadConfig(filename: []const u8) !Config {
 fn createConfig(obj: ast.Object, alloc: std.mem.Allocator) (ConfigError || std.mem.Allocator.Error)!Config {
     var field_iter = obj.fields.iterator();
 
+    // TODO :: Add default values
     var config = Config{
-        .scripts_path = undefined,
+        .scripts_dir = undefined,
+        .dotfiles_dir = undefined,
+        .packages_path = undefined,
         .alloc = alloc,
     };
 
@@ -57,9 +67,15 @@ fn createConfig(obj: ast.Object, alloc: std.mem.Allocator) (ConfigError || std.m
         const name = field.key_ptr.*;
         const value = field.value_ptr.*;
 
-        if (std.mem.eql(u8, name, SCRIPTS_PATH_FIELD)) {
+        if (std.mem.eql(u8, name, SCRIPTS_DIR_FIELD)) {
             if (value != .string) return ConfigError.InvalidFormat;
-            config.scripts_path = try alloc.dupe(u8, value.string);
+            config.scripts_dir = try alloc.dupe(u8, value.string);
+        } else if (std.mem.eql(u8, name, DOTFILES_DIR_FIELD)) {
+            if (value != .string) return ConfigError.InvalidFormat;
+            config.dotfiles_dir = try alloc.dupe(u8, value.string);
+        } else if (std.mem.eql(u8, name, PACKAGES_PATH_FIELD)) {
+            if (value != .string) return ConfigError.InvalidFormat;
+            config.packages_path = try alloc.dupe(u8, value.string);
         } else {
             return ConfigError.InvalidFormat;
         }
