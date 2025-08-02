@@ -37,11 +37,27 @@ pub const PackageDescriptor = struct {
 
         try writer.print("{s:^10} - {s:<20} - Dependencies {d}", .{ self.name, desc, self.countDependencies() });
     }
-    fn countDependencies(self: Self) u32 {
+    pub fn countDependencies(self: Self) u32 {
         if (self.dependencies == null) return 0;
         var sum: u32 = 0;
         for (self.dependencies.?) |dep| sum = sum + dep.countDependencies();
         return sum;
+    }
+};
+
+// Package Context for usage in hashmaps or other stuff
+// Package hash and comparisons are based on the package.name
+pub const PackageContext = struct {
+    const Self = @This();
+
+    pub fn hash(self: Self, p: PackageDescriptor) u64 {
+        _ = self;
+        return std.hash.Wyhash.hash(0, p.name);
+    }
+
+    pub fn eql(self: @This(), f: PackageDescriptor, s: PackageDescriptor) bool {
+        _ = self;
+        return std.mem.eql(u8, f.name, s.name);
     }
 };
 
@@ -51,7 +67,6 @@ pub fn loadPackages(filename: []const u8, alloc: std.mem.Allocator) ![]PackageDe
 
     const file_size = try file.getEndPos();
     try file.seekTo(0);
-
 
     const file_content = try alloc.alloc(u8, file_size);
     defer alloc.free(file_content);
@@ -138,7 +153,7 @@ test "Creating package without dependencies from AST" {
     ;
 
     var l = lxr.Lexer.init(content);
-    var builder = ast.Parser(void).init(&l, std.testing.allocator);
+    var builder = ast.Parser.init(&l, std.testing.allocator);
 
     var tree = try builder.build();
     defer tree.deinit();
@@ -166,7 +181,7 @@ test "Creating package with single object dependency from AST" {
     ;
 
     var l = lxr.Lexer.init(content);
-    var builder = ast.Parser(void).init(&l, std.heap.page_allocator);
+    var builder = ast.Parser.init(&l, std.heap.page_allocator);
 
     var tree = try builder.build();
     defer tree.deinit();
@@ -202,7 +217,7 @@ test "Creating package with multiple object dependency from AST" {
     ;
 
     var l = lxr.Lexer.init(content);
-    var builder = ast.Parser(void).init(&l, std.heap.page_allocator);
+    var builder = ast.Parser.init(&l, std.heap.page_allocator);
 
     const tree = try builder.build();
 

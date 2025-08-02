@@ -54,7 +54,6 @@ pub const Value = union(enum) {
         self.debugPrintHelper(&printer);
     }
     fn debugPrintHelper(self: Self, printer: *util.IndentPrinter) void {
-
         // TODO :: fix this :)
         switch (self) {
             .object => |o| {

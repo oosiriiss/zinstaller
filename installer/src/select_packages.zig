@@ -4,10 +4,8 @@ const util = @import("util.zig");
 const cli = @import("cli.zig");
 
 const Range = struct {
-    /// Inclusive
-    start: u32,
-    /// Inclusive
-    end: u32,
+    start_number: u32,
+    end_number: u32,
 };
 
 const InputTokenType = enum {
@@ -46,9 +44,9 @@ fn validateSelectedPackages(tokens: []const InputToken, package_count: usize) !v
     for (tokens) |token| {
         switch (token) {
             .range => |r| {
-                if (r.end > package_count or r.start > package_count) {
+                if (r.start_number > package_count or r.end_number > package_count) {
                     // Writer failing here doesn't matter
-                    std.log.warn("Range {d}-{d} goes over allowed package number equal to {d}", .{ r.start, r.end, package_count });
+                    std.log.warn("Range {d}-{d} goes over allowed package number equal to {d}", .{ r.start_number, r.end_number, package_count });
                     failed = true;
                 }
             },
@@ -74,24 +72,28 @@ fn validateSelectedPackages(tokens: []const InputToken, package_count: usize) !v
 fn filterSelectedPackages(packages: []PackageDescriptor, tokens: []const InputToken) ![]PackageDescriptor {
     var current_index: usize = 0;
 
-    for (0..packages.len) |i| {
-        if (isSelected(i, tokens)) {
-            std.mem.swap(PackageDescriptor, &packages[current_index], &packages[i]);
+    for (0..packages.len) |index| {
+
+        // packages numbered from 1
+        const package_number = index + 1;
+
+        if (isSelected(package_number, tokens)) {
+            std.mem.swap(PackageDescriptor, &packages[current_index], &packages[index]);
             current_index = current_index + 1;
         }
     }
     return packages[0..current_index];
 }
 
-fn isSelected(index: usize, tokens: []const InputToken) bool {
+fn isSelected(package_number: usize, tokens: []const InputToken) bool {
     for (tokens) |token| {
         switch (token) {
             InputToken.number => |num| {
-                if (num == index)
+                if (num == package_number)
                     return true;
             },
             InputToken.range => |range| {
-                if ((range.start <= index and index <= range.end))
+                if ((range.start_number <= package_number and package_number <= range.end_number))
                     return true;
             },
         }
@@ -178,15 +180,14 @@ fn parseRangeToken(str: []const u8) error{InvalidRange}!InputToken {
     if (start > end)
         return error.InvalidRange;
 
-    return InputToken{ .range = Range{ .start = start, .end = end } };
+    return InputToken{ .range = Range{ .start_number = start, .end_number = end } };
 }
 
-test "Filtering packages" {
+test "Filtering packages by package number" {
     const tokens = [_]InputToken{
-        InputToken{ .number = 0 },
         InputToken{ .number = 1 },
-        InputToken{ .range = .{ .start = 1, .end = 3 } },
-        InputToken{ .range = .{ .start = 5, .end = 6 } },
+        InputToken{ .number = 3 },
+        InputToken{ .number = 5 },
     };
 
     var packages = [_]PackageDescriptor{
@@ -201,49 +202,93 @@ test "Filtering packages" {
 
     const filtered = try filterSelectedPackages(&packages, &tokens);
 
-    try std.testing.expectEqual(6, filtered.len);
+    try std.testing.expectEqual(3, filtered.len);
+
+    try std.testing.expectEqualSlices(u8, filtered[0].name, "P1");
+    try std.testing.expectEqualSlices(u8, filtered[1].name, "P3");
+    try std.testing.expectEqualSlices(u8, filtered[2].name, "P5");
+}
+
+test "Filtering packages by package range" {
+    const tokens = [_]InputToken{
+        InputToken{ .range = .{ .start_number = 1, .end_number = 2 } },
+        InputToken{ .range = .{ .start_number = 5, .end_number = 8 } },
+        InputToken{ .range = .{ .start_number = 10, .end_number = 11 } },
+    };
+
+
+    var packages = [_]PackageDescriptor{
+        PackageDescriptor{ .name = "P1", .description = "D1", .dependencies = null },
+        PackageDescriptor{ .name = "P2", .description = "D2", .dependencies = null },
+        PackageDescriptor{ .name = "P3", .description = "D3", .dependencies = null },
+        PackageDescriptor{ .name = "P4", .description = "D4", .dependencies = null },
+        PackageDescriptor{ .name = "P5", .description = "D5", .dependencies = null },
+        PackageDescriptor{ .name = "P6", .description = "D6", .dependencies = null },
+        PackageDescriptor{ .name = "P7", .description = "D7", .dependencies = null },
+        PackageDescriptor{ .name = "P8", .description = "D8", .dependencies = null },
+        PackageDescriptor{ .name = "P9", .description = "D9", .dependencies = null },
+        PackageDescriptor{ .name = "P10", .description = "D10", .dependencies = null },
+        PackageDescriptor{ .name = "P11", .description = "D11", .dependencies = null },
+    };
+
+    const filtered = try filterSelectedPackages(&packages, &tokens);
+
+    try std.testing.expectEqual(8, filtered.len);
 
     try std.testing.expectEqualSlices(u8, filtered[0].name, "P1");
     try std.testing.expectEqualSlices(u8, filtered[1].name, "P2");
-    try std.testing.expectEqualSlices(u8, filtered[2].name, "P3");
-    try std.testing.expectEqualSlices(u8, filtered[3].name, "P4");
-    try std.testing.expectEqualSlices(u8, filtered[4].name, "P6");
-    try std.testing.expectEqualSlices(u8, filtered[5].name, "P7");
+    try std.testing.expectEqualSlices(u8, filtered[2].name, "P5");
+    try std.testing.expectEqualSlices(u8, filtered[3].name, "P6");
+    try std.testing.expectEqualSlices(u8, filtered[4].name, "P7");
+    try std.testing.expectEqualSlices(u8, filtered[5].name, "P8");
+    try std.testing.expectEqualSlices(u8, filtered[6].name, "P10");
+    try std.testing.expectEqualSlices(u8, filtered[7].name, "P11");
+
 }
 
-test "Selected package with number return true" {
+test "Selected package with valid number returns true" {
     const tokens = [_]InputToken{InputToken{ .number = 15 }};
     const x = isSelected(15, &tokens);
     try std.testing.expectEqual(true, x);
 }
 
-test "Selected package number return false" {
+test "Selected package with invalid number returns false" {
     const tokens = [_]InputToken{InputToken{ .number = 14 }};
     const x = isSelected(15, &tokens);
     try std.testing.expectEqual(false, x);
 }
 
-test "Selected package with range return true" {
-    const tokens = [_]InputToken{InputToken{ .range = .{ .start = 10, .end = 20 } }};
+test "Selected package within specified range return true" {
+    const tokens = [_]InputToken{InputToken{ .range = .{ .start_number = 10, .end_number = 20 } }};
     const x = isSelected(15, &tokens);
     try std.testing.expectEqual(true, x);
 }
 
-test "Selected package number range false" {
-    const tokens = [_]InputToken{InputToken{ .range = .{ .start = 10, .end = 20 } }};
+test "Selected package outside of specified range returns false" {
+    const tokens = [_]InputToken{InputToken{ .range = .{ .start_number = 10, .end_number = 20 } }};
     const x = isSelected(9, &tokens);
+    const y = isSelected(21, &tokens);
     try std.testing.expectEqual(false, x);
+    try std.testing.expectEqual(false, y);
+}
+
+test "Selected package on the edge of range returns true" {
+    const tokens = [_]InputToken{InputToken{ .range = .{ .start_number = 10, .end_number = 20 } }};
+    const x = isSelected(10, &tokens);
+    const y = isSelected(20, &tokens);
+    try std.testing.expectEqual(true, x);
+    try std.testing.expectEqual(true, y);
 }
 
 test "Parsing valid range" {
     const res = try parseRangeToken("5-12");
-    try std.testing.expect(res.range.start == 5 and res.range.end == 12);
+    try std.testing.expect(res.range.start_number == 5 and res.range.end_number == 12);
 
     const res2 = try parseRangeToken("0-15");
-    try std.testing.expect(res2.range.start == 0 and res2.range.end == 15);
+    try std.testing.expect(res2.range.start_number == 0 and res2.range.end_number == 15);
 
     const res3 = try parseRangeToken("8-122");
-    try std.testing.expect(res3.range.start == 8 and res3.range.end == 122);
+    try std.testing.expect(res3.range.start_number == 8 and res3.range.end_number == 122);
 }
 
 test "range start higher than top should throw" {
@@ -252,8 +297,8 @@ test "range start higher than top should throw" {
 }
 
 test "Too much components of range OR negative numbers in range" {
-    const res3 = parseRangeToken("12-125-99");
-    try std.testing.expectError(error.InvalidRange, res3);
+    const res = parseRangeToken("12-125-99");
+    try std.testing.expectError(error.InvalidRange, res);
 }
 
 test "Non numerical value in a range" {
@@ -273,4 +318,10 @@ test "Not enough components in range" {
 
     const res2 = parseRangeToken("asd-");
     try std.testing.expectError(error.InvalidRange, res2);
+
+    const res3 = parseRangeToken("5-");
+    try std.testing.expectError(error.InvalidRange, res3);
+
+    const res4 = parseRangeToken("-10");
+    try std.testing.expectError(error.InvalidRange, res4);
 }

@@ -4,7 +4,7 @@ const ast = @import("ast.zig");
 const util = @import("util.zig");
 
 const SCRIPTS_DIR_FIELD = "scripts_dir";
-const PACKAGES_PATH_FIELD = "packages_file";
+const PACKAGES_PATH_FIELD = "packages_path";
 const DOTFILES_DIR_FIELD = "dotfiles_dir";
 
 const Config = struct {
@@ -55,7 +55,6 @@ pub fn loadConfig(filename: []const u8) !Config {
 fn createConfig(obj: ast.Object, alloc: std.mem.Allocator) (ConfigError || std.mem.Allocator.Error)!Config {
     var field_iter = obj.fields.iterator();
 
-    // TODO :: Add default values
     var config = Config{
         .scripts_dir = undefined,
         .dotfiles_dir = undefined,
