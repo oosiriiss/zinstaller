@@ -18,6 +18,20 @@ pub const PackageDescriptor = struct {
     dependencies: ?[]PackageDescriptor,
 
     const Self = @This();
+
+    pub fn deinit(self:Self,alloc:std.mem.Allocator) void {
+        alloc.free(self.name);
+        
+        if(self.description) |desc| {
+            alloc.free(desc);
+        }
+        if(self.dependencies) |dps| {
+        for(dps) |d| {
+            d.deinit(alloc);
+        }
+    }
+    }
+
     pub fn debugPrint(self: Self) void {
         const desc = if (self.description) |d| d else "";
 
@@ -50,13 +64,14 @@ pub const PackageDescriptor = struct {
 pub const PackageContext = struct {
     const Self = @This();
 
-    pub fn hash(self: Self, p: PackageDescriptor) u64 {
+    pub fn hash(self: Self, p: PackageDescriptor) u32 {
         _ = self;
-        return std.hash.Wyhash.hash(0, p.name);
+        return std.array_hash_map.hashString(p.name);
     }
 
-    pub fn eql(self: @This(), f: PackageDescriptor, s: PackageDescriptor) bool {
+    pub fn eql(self: @This(), f: PackageDescriptor, s: PackageDescriptor, s_index: usize) bool {
         _ = self;
+        _ = s_index;
         return std.mem.eql(u8, f.name, s.name);
     }
 };

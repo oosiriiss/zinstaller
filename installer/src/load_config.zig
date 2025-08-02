@@ -4,7 +4,7 @@ const ast = @import("ast.zig");
 const util = @import("util.zig");
 
 const SCRIPTS_DIR_FIELD = "scripts_dir";
-const PACKAGES_PATH_FIELD = "packages_path";
+const PACKAGES_PATH_FIELD = "packages_file";
 const DOTFILES_DIR_FIELD = "dotfiles_dir";
 
 const Config = struct {
@@ -12,26 +12,22 @@ const Config = struct {
     dotfiles_dir: []const u8,
     packages_path: []const u8,
 
-    alloc: std.mem.Allocator,
-
     const Self = @This();
 
-    pub fn deinit(self: Self) void {
-        self.alloc.free(self.scripts_dir);
-        self.alloc.free(self.dotfiles_dir);
-        self.alloc.free(self.packages_path);
+    pub fn deinit(self: Self, alloc: std.mem.Allocator) void {
+        alloc.free(self.scripts_dir);
+        alloc.free(self.dotfiles_dir);
+        alloc.free(self.packages_path);
     }
 };
 
 const ConfigError = error{InvalidFormat};
 
-pub fn loadConfig(filename: []const u8) !Config {
+pub fn loadConfig(filename: []const u8, alloc: std.mem.Allocator) !Config {
     std.log.info("Loading configuration from {s}", .{filename});
 
     const file = try util.openFileReadonly(filename);
     defer file.close();
-
-    const alloc = std.heap.page_allocator;
 
     const file_content = try util.readAllAlloc(file, alloc);
     defer alloc.free(file_content);
@@ -59,7 +55,6 @@ fn createConfig(obj: ast.Object, alloc: std.mem.Allocator) (ConfigError || std.m
         .scripts_dir = undefined,
         .dotfiles_dir = undefined,
         .packages_path = undefined,
-        .alloc = alloc,
     };
 
     while (field_iter.next()) |field| {
