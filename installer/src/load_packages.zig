@@ -9,6 +9,7 @@ const PACKAGE_OBJECT_NAME = "package";
 const PACKAGE_NAME_FIELD = "name";
 const PACKAGE_DESCRIPTION_FIELD = "description";
 const PACKAGE_DEPENDENCIES_FIELD = "dependencies";
+const PACKAGE_SETUP_COMMAND_FILED = "setup_command";
 
 const PackageError = error{InvalidFormat};
 
@@ -16,20 +17,21 @@ pub const PackageDescriptor = struct {
     name: []const u8,
     description: ?[]const u8,
     dependencies: ?[]PackageDescriptor,
+    setup_command: ?[]const u8,
 
     const Self = @This();
 
-    pub fn deinit(self:Self,alloc:std.mem.Allocator) void {
+    pub fn deinit(self: Self, alloc: std.mem.Allocator) void {
         alloc.free(self.name);
-        
-        if(self.description) |desc| {
+
+        if (self.description) |desc| {
             alloc.free(desc);
         }
-        if(self.dependencies) |dps| {
-        for(dps) |d| {
-            d.deinit(alloc);
+        if (self.dependencies) |dps| {
+            for (dps) |d| {
+                d.deinit(alloc);
+            }
         }
-    }
     }
 
     pub fn debugPrint(self: Self) void {
@@ -76,8 +78,8 @@ pub const PackageContext = struct {
     }
 };
 
-pub fn loadPackages(filename: []const u8, alloc: std.mem.Allocator) ![]PackageDescriptor {
-    const file = try util.openFileReadonly(filename);
+pub fn loadPackages(packages_file_path: []const u8, alloc: std.mem.Allocator) ![]PackageDescriptor {
+    const file = try util.openFileReadonly(packages_file_path);
     defer file.close();
 
     const file_size = try file.getEndPos();
@@ -133,24 +135,26 @@ fn createPackage(val: ast.Value) (PackageError || std.mem.Allocator.Error)!Packa
 
     var field_iter = obj.fields.iterator();
 
-    var pkg = PackageDescriptor{ .name = undefined, .description = null, .dependencies = null };
+    var pkg = PackageDescriptor{ .name = undefined, .description = null, .dependencies = null, .setup_command = null };
 
     const alloc = std.heap.page_allocator;
+
+    var str_field_map = std.StringHashMap(*?[]const u8).init(alloc);
+    try str_field_map.put("name", @ptrCast(&pkg.name));
+    try str_field_map.put("description", &pkg.description);
+    try str_field_map.put("setup_command", &pkg.setup_command);
 
     while (field_iter.next()) |field| {
         const name = field.key_ptr.*;
         const value = field.value_ptr.*;
 
-        if (std.mem.eql(u8, name, PACKAGE_NAME_FIELD)) {
-            if (value != .string) return PackageError.InvalidFormat;
-            pkg.name = try alloc.dupe(u8, value.string);
-        } else if (std.mem.eql(u8, name, PACKAGE_DESCRIPTION_FIELD)) {
-            if (value != .string) return PackageError.InvalidFormat;
-            pkg.description = try alloc.dupe(u8, value.string);
-        } else if (std.mem.eql(u8, name, PACKAGE_DEPENDENCIES_FIELD)) {
+        if (str_field_map.get(name)) |str_field_ptr|
+            str_field_ptr.* = value.copyString(alloc) catch return PackageError.InvalidFormat
+        else if (std.mem.eql(u8, name, "dependencies")) {
             if (value != .list) return PackageError.InvalidFormat;
             pkg.dependencies = try createPackages(value.list);
         } else {
+            std.log.err("Unknown package field {s}",.{name});
             return PackageError.InvalidFormat;
         }
     }

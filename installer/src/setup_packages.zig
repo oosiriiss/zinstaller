@@ -3,6 +3,7 @@ const PackageDescriptor = @import("load_packages.zig").PackageDescriptor;
 const PackageContext = @import("load_packages.zig").PackageContext;
 const util = @import("util.zig");
 
+
 // Allocates memory and merges packages and dependenices into one big slice.
 // Dependencies are put before packages
 // Dependency duplicates are ignored.
@@ -76,8 +77,8 @@ fn downloadPackage(package: PackageDescriptor) !void {
 
 test "preparePackagesSlice removes packages with duplicate names on the same level" {
     const packages = [_]PackageDescriptor{
-        .{ .name = "Test1", .description = null, .dependencies = null },
-        .{ .name = "Test1", .description = null, .dependencies = null },
+        .{ .name = "Test1", .description = null, .dependencies = null, .setup_command=null},
+        .{ .name = "Test1", .description = null, .dependencies = null, .setup_command=null},
     };
 
     const out = try finalizePackages(&packages, std.testing.allocator);
@@ -87,24 +88,24 @@ test "preparePackagesSlice removes packages with duplicate names on the same lev
 
 test "preparePackagesSlice removes packages with duplicate on the nested levels" {
     var test1_deps: [1]PackageDescriptor = .{
-        .{ .name = "Test1", .description = null, .dependencies = null },
+        .{ .name = "Test1", .description = null, .dependencies = null, .setup_command=null},
     };
     var test2_deps: [1]PackageDescriptor = .{
-        .{ .name = "Test2", .description = null, .dependencies = null },
+        .{ .name = "Test2", .description = null, .dependencies = null, .setup_command=null},
     };
     var test22_deps: [1]PackageDescriptor = .{
-        .{ .name = "Test2", .description = null, .dependencies = null },
+        .{ .name = "Test2", .description = null, .dependencies = null, .setup_command=null},
     };
 
     var test5_deps: [1]PackageDescriptor = .{
-        .{ .name = "Test5", .description = null, .dependencies = &test22_deps },
+        .{ .name = "Test5", .description = null, .dependencies = &test22_deps, .setup_command=null},
     };
 
     const packages: []const PackageDescriptor = &.{
-        .{ .name = "Test1", .description = null, .dependencies = &test1_deps },
-        .{ .name = "Test2", .description = null, .dependencies = null },
-        .{ .name = "Test3", .description = null, .dependencies = &test2_deps },
-        .{ .name = "Test4", .description = null, .dependencies = &test5_deps },
+        .{ .name = "Test1", .description = null, .dependencies = &test1_deps, .setup_command=null},
+        .{ .name = "Test2", .description = null, .dependencies = null, .setup_command=null},
+        .{ .name = "Test3", .description = null, .dependencies = &test2_deps, .setup_command=null},
+        .{ .name = "Test4", .description = null, .dependencies = &test5_deps, .setup_command=null},
     };
 
     const out = try finalizePackages(packages, std.testing.allocator);
@@ -114,24 +115,24 @@ test "preparePackagesSlice removes packages with duplicate on the nested levels"
 
 test "preparePackagesSlice removes packages with nested packages come before " {
     var depth4: [1]PackageDescriptor = .{
-        .{ .name = "Depth4", .description = null, .dependencies = null },
+        .{ .name = "Depth4", .description = null, .dependencies = null, .setup_command=null},
     };
     var depth3: [1]PackageDescriptor = .{
-        .{ .name = "Depth3", .description = null, .dependencies = &depth4 },
+        .{ .name = "Depth3", .description = null, .dependencies = &depth4, .setup_command=null},
     };
     var depth2: [1]PackageDescriptor = .{
-        .{ .name = "Depth2", .description = null, .dependencies = &depth3 },
+        .{ .name = "Depth2", .description = null, .dependencies = &depth3, .setup_command=null},
     };
 
     var depth1: [1]PackageDescriptor = .{
-        .{ .name = "Depth1", .description = null, .dependencies = &depth2 },
+        .{ .name = "Depth1", .description = null, .dependencies = &depth2, .setup_command=null},
     };
 
     const packages: []const PackageDescriptor = &.{
-        .{ .name = "Test1", .description = null, .dependencies = null },
-        .{ .name = "Test2", .description = null, .dependencies = null },
-        .{ .name = "Test3", .description = null, .dependencies = &depth1 },
-        .{ .name = "Test4", .description = null, .dependencies = null },
+        .{ .name = "Test1", .description = null, .dependencies = null, .setup_command=null},
+        .{ .name = "Test2", .description = null, .dependencies = null, .setup_command=null},
+        .{ .name = "Test3", .description = null, .dependencies = &depth1, .setup_command=null},
+        .{ .name = "Test4", .description = null, .dependencies = null, .setup_command=null},
     };
 
     const out = try finalizePackages(packages, std.testing.allocator);
@@ -148,18 +149,18 @@ test "preparePackagesSlice removes packages with nested packages come before " {
 }
 
 test "preparePackagesSlice removes packages with duplicate packages are ignored" {
-    var depth11: [1]PackageDescriptor = .{.{ .name = "Depth11", .description = null, .dependencies = null }};
-    var depth2: [1]PackageDescriptor = .{.{ .name = "Depth2", .description = null, .dependencies = null }};
-    var depth1: [1]PackageDescriptor = .{.{ .name = "Depth1", .description = null, .dependencies = &depth2 }};
-    var depth3_dup: [1]PackageDescriptor = .{.{ .name = "Depth3", .description = null, .dependencies = null }};
-    var depth2_dup: [1]PackageDescriptor = .{.{ .name = "Depth2", .description = null, .dependencies = &depth3_dup }};
-    var depth1_dup: [1]PackageDescriptor = .{.{ .name = "Depth1", .description = null, .dependencies = &depth2_dup }};
+    var depth11: [1]PackageDescriptor = .{.{ .name = "Depth11", .description = null, .dependencies = null, .setup_command=null}};
+    var depth2: [1]PackageDescriptor = .{.{ .name = "Depth2", .description = null, .dependencies = null, .setup_command=null}};
+    var depth1: [1]PackageDescriptor = .{.{ .name = "Depth1", .description = null, .dependencies = &depth2, .setup_command=null}};
+    var depth3_dup: [1]PackageDescriptor = .{.{ .name = "Depth3", .description = null, .dependencies = null, .setup_command=null}};
+    var depth2_dup: [1]PackageDescriptor = .{.{ .name = "Depth2", .description = null, .dependencies = &depth3_dup, .setup_command=null}};
+    var depth1_dup: [1]PackageDescriptor = .{.{ .name = "Depth1", .description = null, .dependencies = &depth2_dup, .setup_command=null}};
 
     const packages: []const PackageDescriptor = &.{
-        .{ .name = "Test1", .description = null, .dependencies = &depth11 },
-        .{ .name = "Test2", .description = null, .dependencies = &depth1 },
-        .{ .name = "Test3", .description = null, .dependencies = null },
-        .{ .name = "Test4", .description = null, .dependencies = &depth1_dup },
+        .{ .name = "Test1", .description = null, .dependencies = &depth11, .setup_command=null},
+        .{ .name = "Test2", .description = null, .dependencies = &depth1, .setup_command=null},
+        .{ .name = "Test3", .description = null, .dependencies = null, .setup_command=null},
+        .{ .name = "Test4", .description = null, .dependencies = &depth1_dup, .setup_command=null},
     };
 
     const out = try finalizePackages(packages, std.testing.allocator);

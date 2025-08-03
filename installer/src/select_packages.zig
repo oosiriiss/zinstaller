@@ -191,13 +191,13 @@ test "Filtering packages by package number" {
     };
 
     var packages = [_]PackageDescriptor{
-        PackageDescriptor{ .name = "P1", .description = "D1", .dependencies = null },
-        PackageDescriptor{ .name = "P2", .description = "D2", .dependencies = null },
-        PackageDescriptor{ .name = "P3", .description = "D3", .dependencies = null },
-        PackageDescriptor{ .name = "P4", .description = "D4", .dependencies = null },
-        PackageDescriptor{ .name = "P5", .description = "D5", .dependencies = null },
-        PackageDescriptor{ .name = "P6", .description = "D6", .dependencies = null },
-        PackageDescriptor{ .name = "P7", .description = "D7", .dependencies = null },
+        PackageDescriptor{ .name = "P1", .description = "D1", .dependencies = null, .setup_command = null },
+        PackageDescriptor{ .name = "P2", .description = "D2", .dependencies = null, .setup_command = null },
+        PackageDescriptor{ .name = "P3", .description = "D3", .dependencies = null, .setup_command = null },
+        PackageDescriptor{ .name = "P4", .description = "D4", .dependencies = null, .setup_command = null },
+        PackageDescriptor{ .name = "P5", .description = "D5", .dependencies = null, .setup_command = null },
+        PackageDescriptor{ .name = "P6", .description = "D6", .dependencies = null, .setup_command = null },
+        PackageDescriptor{ .name = "P7", .description = "D7", .dependencies = null, .setup_command = null },
     };
 
     const filtered = try filterSelectedPackages(&packages, &tokens);
@@ -216,19 +216,18 @@ test "Filtering packages by package range" {
         InputToken{ .range = .{ .start_number = 10, .end_number = 11 } },
     };
 
-
     var packages = [_]PackageDescriptor{
-        PackageDescriptor{ .name = "P1", .description = "D1", .dependencies = null },
-        PackageDescriptor{ .name = "P2", .description = "D2", .dependencies = null },
-        PackageDescriptor{ .name = "P3", .description = "D3", .dependencies = null },
-        PackageDescriptor{ .name = "P4", .description = "D4", .dependencies = null },
-        PackageDescriptor{ .name = "P5", .description = "D5", .dependencies = null },
-        PackageDescriptor{ .name = "P6", .description = "D6", .dependencies = null },
-        PackageDescriptor{ .name = "P7", .description = "D7", .dependencies = null },
-        PackageDescriptor{ .name = "P8", .description = "D8", .dependencies = null },
-        PackageDescriptor{ .name = "P9", .description = "D9", .dependencies = null },
-        PackageDescriptor{ .name = "P10", .description = "D10", .dependencies = null },
-        PackageDescriptor{ .name = "P11", .description = "D11", .dependencies = null },
+        PackageDescriptor{ .name = "P1", .description = "D1", .dependencies = null, .setup_command = null },
+        PackageDescriptor{ .name = "P2", .description = "D2", .dependencies = null, .setup_command = null },
+        PackageDescriptor{ .name = "P3", .description = "D3", .dependencies = null, .setup_command = null },
+        PackageDescriptor{ .name = "P4", .description = "D4", .dependencies = null, .setup_command = null },
+        PackageDescriptor{ .name = "P5", .description = "D5", .dependencies = null, .setup_command = null },
+        PackageDescriptor{ .name = "P6", .description = "D6", .dependencies = null, .setup_command = null },
+        PackageDescriptor{ .name = "P7", .description = "D7", .dependencies = null, .setup_command = null },
+        PackageDescriptor{ .name = "P8", .description = "D8", .dependencies = null, .setup_command = null },
+        PackageDescriptor{ .name = "P9", .description = "D9", .dependencies = null, .setup_command = null },
+        PackageDescriptor{ .name = "P10", .description = "D10", .dependencies = null, .setup_command = null },
+        PackageDescriptor{ .name = "P11", .description = "D11", .dependencies = null, .setup_command = null },
     };
 
     const filtered = try filterSelectedPackages(&packages, &tokens);
@@ -243,7 +242,6 @@ test "Filtering packages by package range" {
     try std.testing.expectEqualSlices(u8, filtered[5].name, "P8");
     try std.testing.expectEqualSlices(u8, filtered[6].name, "P10");
     try std.testing.expectEqualSlices(u8, filtered[7].name, "P11");
-
 }
 
 test "Selected package with valid number returns true" {

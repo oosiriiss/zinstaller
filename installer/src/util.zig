@@ -66,21 +66,25 @@ pub fn readLine(buffer: []u8) ![]u8 {
     }
 }
 
-const OpenError = error{ AccessDenied, NotFound, UnknownError };
+const OpenError = error{ AccessDenied, NotFound, UnknownError,IsDirectory};
 
 // Utility method for opening a file, Handles basic errors by printing to the stdout
 pub fn openFileReadonly(path: []const u8) OpenError!std.fs.File {
-    const flags: std.fs.File.OpenFlags = .{ .mode = .read_only };
+    const flags: std.fs.File.OpenFlags = .{ .mode = .read_only};
     const file = std.fs.cwd().openFile(path, flags) catch |err| {
-        const oerr = std.fs.File.OpenError;
+        const e = std.fs.File.OpenError;
         switch (err) {
-            oerr.AccessDenied => {
+            e.AccessDenied => {
                 std.log.err("Access to file: '{s}' denied", .{path});
                 return OpenError.AccessDenied;
             },
-            oerr.FileNotFound => {
-                std.log.err("File '{s}' not found\n", .{path});
+            e.FileNotFound => {
+                std.log.err("File '{s}' not found", .{path});
                 return OpenError.NotFound;
+            },
+            e.IsDir => {
+                std.log.err("Path '{s}' is directory when file was expected", .{path});
+                return OpenError.IsDirectory;
             },
             else => {
                 std.log.err("An unknown error occurred when trying to open file {s}", .{path});

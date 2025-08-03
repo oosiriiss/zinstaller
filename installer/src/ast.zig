@@ -83,6 +83,11 @@ pub const Value = union(enum) {
             },
         }
     }
+    // asserts that it is instance of a string and returns it's copy.
+    pub fn copyString(self: Self, alloc: std.mem.Allocator) ![]const u8 {
+        if(self != .string) return error.NotAString;
+        return try alloc.dupe(u8, self.string);
+    }
 };
 pub const Entry = struct {
     key: []const u8,

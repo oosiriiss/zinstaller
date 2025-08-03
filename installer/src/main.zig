@@ -10,32 +10,32 @@ pub fn main() !void {
     // TODO :: Review the allocators - change page_allocator?
     // TODO :: Introduce detection of duplicate packages when reading package list;
     // TODO :: Printing a list of selected packages or just names
+    // TODO :: Allow aboslute paths in config
+    // TODO :: Detect missing fields when parsing config
+    // POSSBILE_TODO :: improve creating package and config objects by introducing some shared methods like for parsing string/ creating the field maps etc.
 
-    const PACKAGES_LIST_PATH = "./packages.list";
     const CONFIG_PATH = "./installer.cfg";
 
-    // All allocations done with arena
+    // All allocations done with arena so no real need for memory cleanup
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
     const alloc = arena.allocator();
 
-    const config = try loadConfig(CONFIG_PATH, alloc);
-    _ = config;
-    // defer config.deinit();
+    var config = try loadConfig(CONFIG_PATH, alloc);
+    defer config.deinit(alloc);
 
-    const packages = try loadPackages(PACKAGES_LIST_PATH, alloc);
-    //defer {
-    //    for (packages) |pkg| {
-    //        pkg.deinit(alloc);
-    //    }
-    //    alloc.free(packages);
-    //}
+    const packages = try loadPackages(config.packages_file_path, alloc);
+    defer {
+        for (packages) |pkg| {
+            pkg.deinit(alloc);
+        }
+        alloc.free(packages);
+    }
 
     const selected_packages = try selectPackages(packages, std.io.getStdOut().writer().any());
-
     const final_packages = try finalizePackages(selected_packages, alloc);
-    // defer alloc.free(final_packages);
+    defer alloc.free(final_packages);
 
     try downloadPackages(final_packages);
 }

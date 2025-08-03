@@ -3,25 +3,31 @@ const lxr = @import("lexer.zig");
 const ast = @import("ast.zig");
 const util = @import("util.zig");
 
-const SCRIPTS_DIR_FIELD = "scripts_dir";
-const PACKAGES_PATH_FIELD = "packages_file";
-const DOTFILES_DIR_FIELD = "dotfiles_dir";
+const BASE_SCRIPTS_DIR_PATH = "./scripts";
+const BASE_DOTFILES_DIR_PATH = "./doftiles";
+const BASE_PACKAGES_FILE_PATH = "./packages.list";
 
 const Config = struct {
-    scripts_dir: []const u8,
-    dotfiles_dir: []const u8,
-    packages_path: []const u8,
+    scripts_dir_path: []const u8,
+    dotfiles_dir_path: []const u8,
+    packages_file_path: []const u8,
 
     const Self = @This();
 
-    pub fn deinit(self: Self, alloc: std.mem.Allocator) void {
-        alloc.free(self.scripts_dir);
-        alloc.free(self.dotfiles_dir);
-        alloc.free(self.packages_path);
+    pub fn deinit(self: *Self, alloc: std.mem.Allocator) void {
+        alloc.free(self.scripts_dir_path);
+        alloc.free(self.dotfiles_dir_path);
+        alloc.free(self.packages_file_path);
     }
 };
 
-const ConfigError = error{InvalidFormat};
+const ConfigError = error{
+    InvalidFormat,
+    UnknownField,
+    MissingFields,
+    FieldHandleFail,
+    MemoryError,
+};
 
 pub fn loadConfig(filename: []const u8, alloc: std.mem.Allocator) !Config {
     std.log.info("Loading configuration from {s}", .{filename});
@@ -52,25 +58,24 @@ fn createConfig(obj: ast.Object, alloc: std.mem.Allocator) (ConfigError || std.m
     var field_iter = obj.fields.iterator();
 
     var config = Config{
-        .scripts_dir = undefined,
-        .dotfiles_dir = undefined,
-        .packages_path = undefined,
+        .scripts_dir_path = BASE_SCRIPTS_DIR_PATH,
+        .dotfiles_dir_path = BASE_DOTFILES_DIR_PATH,
+        .packages_file_path = BASE_PACKAGES_FILE_PATH,
     };
+
+    var str_field_map = std.StringHashMap(*[]const u8).init(alloc);
+    try str_field_map.put("scripts_dir", &config.scripts_dir_path);
+    try str_field_map.put("dotfiles_dir", &config.dotfiles_dir_path);
+    try str_field_map.put("packages_file", &config.packages_file_path);
 
     while (field_iter.next()) |field| {
         const name = field.key_ptr.*;
         const value = field.value_ptr.*;
 
-        if (std.mem.eql(u8, name, SCRIPTS_DIR_FIELD)) {
-            if (value != .string) return ConfigError.InvalidFormat;
-            config.scripts_dir = try alloc.dupe(u8, value.string);
-        } else if (std.mem.eql(u8, name, DOTFILES_DIR_FIELD)) {
-            if (value != .string) return ConfigError.InvalidFormat;
-            config.dotfiles_dir = try alloc.dupe(u8, value.string);
-        } else if (std.mem.eql(u8, name, PACKAGES_PATH_FIELD)) {
-            if (value != .string) return ConfigError.InvalidFormat;
-            config.packages_path = try alloc.dupe(u8, value.string);
+        if (str_field_map.get(name)) |config_field_ptr| {
+            config_field_ptr.* = value.copyString(alloc) catch return ConfigError.FieldHandleFail;
         } else {
+            std.log.err("Unknown field {s} in config", .{name});
             return ConfigError.InvalidFormat;
         }
     }
