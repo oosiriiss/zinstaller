@@ -5,7 +5,6 @@ const loadConfig = @import("load_config.zig").loadConfig;
 const finalizePackages = @import("setup_packages.zig").finalizePackages;
 const downloadPackages = @import("setup_packages.zig").downloadPackages;
 
-
 pub fn main() !void {
     // TODO :: Add some sort of validation if there are two packages with different fields specified in config
     // TODO :: Printing a list of selected packages or just names (after selecting)
@@ -37,7 +36,6 @@ pub fn main() !void {
     defer alloc.free(final_packages);
 
     try downloadPackages(final_packages);
-
 }
 
 test {

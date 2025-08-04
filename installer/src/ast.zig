@@ -226,6 +226,7 @@ test "Parsing string assignment" {
 
     var l1 = lxr.Lexer.init(t1);
     var ast = Parser.init(&l1, std.testing.allocator);
+    defer l1.deinit();
     var e = try ast.parseAssignment();
 
     try std.testing.expectEqualSlices(u8, "huj", e.key);
@@ -242,6 +243,7 @@ test "Parsing empty object assignment" {
 
     var l1 = lxr.Lexer.init(t1);
     var ast = Parser.init(&l1, std.testing.allocator);
+    defer l1.deinit();
     var e = try ast.parseAssignment();
 
     try std.testing.expectEqualSlices(u8, "huj", e.key);
@@ -259,6 +261,7 @@ test "Parsing object with fields assignment" {
 
     var l1 = lxr.Lexer.init(t1);
     var ast = Parser.init(&l1, std.testing.allocator);
+    defer l1.deinit();
     var e = try ast.parseAssignment();
 
     try std.testing.expectEqualSlices(u8, "huj", e.key);
@@ -279,6 +282,7 @@ test "Parsing list of strings" {
 
     var l1 = lxr.Lexer.init(t1);
     var ast = Parser.init(&l1, std.testing.allocator);
+    defer l1.deinit();
     var e = try ast.parseArray();
 
     try std.testing.expectEqual(3, e.len);
@@ -300,6 +304,7 @@ test "Parsing list of strings assignment" {
 
     var l1 = lxr.Lexer.init(t1);
     var ast = Parser.init(&l1, std.testing.allocator);
+    defer l1.deinit();
     var e = try ast.parseAssignment();
 
     try std.testing.expectEqualSlices(u8, "huj", e.key);

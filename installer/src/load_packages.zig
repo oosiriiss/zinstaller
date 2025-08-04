@@ -91,7 +91,7 @@ pub fn loadPackages(packages_file_path: []const u8, alloc: std.mem.Allocator) ![
     _ = try file.readAll(file_content);
 
     var lexer = lxr.Lexer.init(file_content);
-
+    defer lexer.deinit();
     var parser = ast.Parser.init(&lexer, alloc);
 
     var ast_tree = try parser.build();
@@ -154,7 +154,7 @@ fn createPackage(val: ast.Value) (PackageError || std.mem.Allocator.Error)!Packa
             if (value != .list) return PackageError.InvalidFormat;
             pkg.dependencies = try createPackages(value.list);
         } else {
-            std.log.err("Unknown package field {s}",.{name});
+            std.log.err("Unknown package field {s}", .{name});
             return PackageError.InvalidFormat;
         }
     }
