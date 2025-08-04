@@ -21,6 +21,10 @@ pub const Symbol = enum {
     assign,
     comma,
     semicolon,
+
+    pub fn toString(self: @This()) []const u8 {
+        return symbol_reverse_map.get(self);
+    }
 };
 
 const symbol_map = std.StaticStringMap(Symbol).initComptime([_]struct { []const u8, Symbol }{
@@ -29,12 +33,18 @@ const symbol_map = std.StaticStringMap(Symbol).initComptime([_]struct { []const 
     .{ "[", .square_left },
     .{ "]", .square_right },
     .{ "=", .assign },
-    .{ ";", .semicolon },
     .{ ",", .comma },
+    .{ ";", .semicolon },
 });
 
-// This symbol doesn't get matched with other symbols and the rest of the line after it is ignored by the lexer
-const COMMENT_SYMBOL = "//";
+const symbol_reverse_map = blk: {
+    var map = std.EnumArray(Symbol, []const u8).initUndefined();
+    for (symbol_map.keys()) |key| {
+        map.set(symbol_map.get(key).?, key);
+    }
+    break :blk map;
+};
+
 const LONGEST_SYMBOL_LENGTH = blk: {
     var max: usize = 0;
     for (symbol_map.keys()) |k| {
@@ -43,14 +53,6 @@ const LONGEST_SYMBOL_LENGTH = blk: {
         }
     }
     break :blk max;
-};
-
-const ParseError = error{
-    InvalidSymbol,
-    InvalidKeyword,
-    UnknownToken,
-    UnterminatedString,
-    EOF,
 };
 
 const Token = union(enum) {
@@ -67,11 +69,7 @@ const Token = union(enum) {
                 std.debug.print("IDENTIFIER({s})", .{ident});
             },
             .symbol => |symbol| {
-                if (std.enums.tagName(Symbol, symbol)) |name| {
-                    std.debug.print("SYMBOL({s})", .{name});
-                } else {
-                    std.debug.print("UNKNOWN_SYMBOL({any})", .{symbol});
-                }
+                std.debug.print("SYMBOL({s})", .{symbol.toString()});
             },
             .keyword => |kw| {
                 if (std.enums.tagName(Keyword, kw)) |name| {
@@ -87,6 +85,8 @@ const Token = union(enum) {
     }
 };
 
+const LexerError = error{ UnknownToken, UnterminatedString, EOF };
+
 // The lexer doesn't allocate anything all the slices come directly from the source text.
 pub const Lexer = struct {
     /// The content that is parsed
@@ -94,11 +94,22 @@ pub const Lexer = struct {
     /// Current position inside content
     index: usize,
 
+    // only for errors
+    // Line number of current content
+    current_line: usize,
+    // Column of the
+    current_line_char: usize,
+
+    current_error: ?LexerError,
+
     const Self = @This();
     pub fn init(content: []const u8) Self {
         return .{
             .content = content,
             .index = 0,
+            .current_line = 1,
+            .current_line_char = 1,
+            .current_error = null,
         };
     }
     pub fn debugPrint(self: *Self) void {
@@ -112,12 +123,23 @@ pub const Lexer = struct {
         self.index = saved_index;
     }
 
-    // Returns a slice from self.content that should represent a single token
+    // Returns last encountered error or void if no error was encountered
+    // Line number and column can be retrieved with self.current_line and self.current_line_char fields
+    pub fn getError(self: Self) LexerError!void {
+        if (self.current_error) |err| return err;
+    }
+
+    // Tries to parse the token from give content
+    // if self.content is finished returns null and self.current_error is LexerError.EOF
+    // if an error is encountered self.current_error is set and the function returns null
     pub fn nextToken(self: *Self) ?Token {
+        if (self.current_error != null) return null;
         self.skipIgnorable();
 
-        if (self.index >= self.content.len)
+        if (!self.canReadChar()) {
+            self.current_error = LexerError.EOF;
             return null;
+        }
 
         if (self.matchSymbol()) |symbol| {
             return Token{ .symbol = symbol };
@@ -126,17 +148,12 @@ pub const Lexer = struct {
         const curr_char = self.content[self.index];
         const token = switch (curr_char) {
             '"' => {
-                const start_index = self.index;
-
                 if (self.readString()) |str| {
                     return Token{ .string_literal = str };
                 } else |err| {
-                    if (err == error.UnterminatedString) {
-                        // TODO :: Change this to errors bubbling to main
-                        std.debug.panic("Unterminated string encountered at index:{d}\n", .{start_index});
-                    }
+                    self.current_error = err;
+                    return null;
                 }
-                return null;
             },
             '_', 'a'...'z', 'A'...'Z' => {
                 const ident = self.readIdentifier();
@@ -149,7 +166,7 @@ pub const Lexer = struct {
                 }
             },
             else => {
-                std.debug.panic("Unknown token encountered: '{c}' (int_code: {d})", .{ curr_char, @as(i32, curr_char) });
+                self.current_error = LexerError.UnknownToken;
                 return null;
             },
         };
@@ -201,10 +218,16 @@ pub const Lexer = struct {
     }
 
     pub fn peek(self: *Self) ?Token {
-        // TODO :: ????? Implement individual method for each token type like symbol etc. ?????
-        const saved_index = self.index;
+        const index = self.index;
+        const line_number = self.current_line;
+        const line_number_char = self.current_line_char;
+
         const token = self.nextToken();
-        self.index = saved_index;
+
+        self.index = index;
+        self.current_line = line_number;
+        self.current_line_char = line_number_char;
+
         return token;
     }
 
@@ -226,7 +249,7 @@ pub const Lexer = struct {
             const key = self.content[self.index..(self.index + current_length)];
 
             if (symbol_map.get(key)) |s| {
-                self.index = self.index + current_length;
+                for (0..current_length) |_| _ = self.readChar();
                 return s;
             }
 
@@ -237,95 +260,97 @@ pub const Lexer = struct {
     }
 
     fn readString(self: *Self) error{UnterminatedString}![]const u8 {
+        const start_line = self.current_line;
+        const start_line_char = self.current_line_char;
         // Skipping Beggining of string (")
+        _ = self.readChar();
+        const content_start = self.index;
 
-        self.index = self.index + 1;
-        const start_pos = self.index;
-
-        while (self.index < self.content.len and self.content[self.index] != '"') {
-            self.index = self.index + 1;
+        while (self.canReadChar() and self.peekChar() != '"') {
+            _ = self.readChar();
         }
-
-        if (self.index >= self.content.len) {
+        if (!self.canReadChar()) {
+            // Returning the string to
+            self.index = content_start - 1;
+            self.current_line = start_line;
+            self.current_line_char = start_line_char;
             return error.UnterminatedString;
         }
-
         // Skipping end of string (")
-        self.index = self.index + 1;
-        return self.content[start_pos .. self.index - 1];
+        _ = self.readChar();
+        return self.content[content_start .. self.index - 1];
     }
 
     fn readIdentifier(self: *Self) []const u8 {
         const start_pos = self.index;
 
-        while (self.index < self.content.len and (std.ascii.isAlphanumeric(self.content[self.index]) or self.content[self.index] == '_'))
-            self.index = self.index + 1;
+        while (self.canReadChar() and (std.ascii.isAlphanumeric(self.peekChar()) or self.peekChar() == '_'))
+            _ = self.readChar();
 
         return self.content[start_pos..self.index];
     }
 
-    fn parseKeyword(str_token: []const u8) ParseError!Keyword {
+    fn parseKeyword(str_token: []const u8) (error{InvalidKeyword})!Keyword {
         if (keyword_map.get(str_token)) |token| {
             return token;
         }
-
-        return ParseError.InvalidKeyword;
-    }
-
-    fn isSymbol(str_token: []const u8) bool {
-        return str_token.len == 1 and str_token == '{' or str_token == '}';
-    }
-
-    fn parseSymbol(str_token: []const u8) ParseError!Symbol {
-        // TODO :: Change this function to trust the caller that it's a symbol?
-        if (!isSymbol(str_token)) {
-            std.log.err("Token: {s} is not a symbol", .{str_token});
-            return ParseError.InvalidSymbol;
-        }
+        return error.InvalidKeyword;
     }
 
     // Skips all whitespace and comments
     fn skipIgnorable(self: *Self) void {
-        if (self.index >= self.content.len)
-            return;
+        if (!self.canReadChar()) return;
 
-        var curr = self.content[self.index];
-
-        while (std.ascii.isWhitespace(curr) or self.isComment()) {
+        while (self.canReadChar() and std.ascii.isWhitespace(self.peekChar()) or self.isComment()) {
             self.skipWhitespace();
-
             self.skipComment();
-
-            if (self.index >= self.content.len)
-                break;
-            curr = self.content[self.index];
         }
     }
 
+    fn canReadChar(self: Self) bool {
+        return self.index < self.content.len;
+    }
+
+    fn readChar(self: *Self) u8 {
+        const char = self.content[self.index];
+        self.index = self.index + 1;
+
+        self.current_line_char = self.current_line_char + 1;
+        if (char == '\n') {
+            self.current_line = self.current_line + 1;
+            self.current_line_char = 1;
+        }
+
+        return char;
+    }
+
+    fn peekChar(self: *Self) u8 {
+        return self.content[self.index];
+    }
+
     fn skipWhitespace(self: *Self) void {
-        while (self.index < self.content.len and std.ascii.isWhitespace(self.content[self.index])) {
-            self.index = self.index + 1;
+        while (self.canReadChar() and std.ascii.isWhitespace(self.peekChar())) {
+            _ = self.readChar();
         }
     }
 
     fn isComment(self: Self) bool {
+        // This symbol doesn't get matched with other symbols and the rest of the line after it is ignored by the lexer
+        const COMMENT_SYMBOL = "//";
         return self.index + COMMENT_SYMBOL.len - 1 < self.content.len and
             std.mem.eql(u8, COMMENT_SYMBOL, self.content[self.index..(self.index + COMMENT_SYMBOL.len)]);
     }
 
     fn skipComment(self: *Self) void {
-        if (self.index + 1 >= self.content.len)
-            return;
-
         if (!self.isComment())
             return;
 
         // Skipping the comment
-        while (self.index < self.content.len and self.content[self.index] != '\n')
-            self.index = self.index + 1;
+        while (self.canReadChar() and self.peekChar() != '\n')
+            _ = self.readChar();
 
         // Finally skipping the newline
-        self.index = self.index + 1;
+        _ = self.readChar();
     }
 };
 
@@ -406,4 +431,20 @@ test "Parsing keywords" {
     try std.testing.expectEqual(Keyword.if_keyword, t1.keyword);
     try std.testing.expectEqual(Keyword.else_keyword, t2.keyword);
     try std.testing.expectEqual(Keyword.switch_keyword, t3.keyword);
+}
+
+test "Unterminated string should set lexer error" {
+    const sample_content = "\"Some string content that is not terminated";
+    var lexer = Lexer.init(sample_content);
+
+    try std.testing.expectEqual(null, lexer.nextToken());
+    try std.testing.expectEqual(LexerError.UnterminatedString, lexer.getError());
+}
+
+test "Unknown symbol should set lexer error" {
+    const sample_content = "%";
+    var lexer = Lexer.init(sample_content);
+
+    try std.testing.expectEqual(null, lexer.nextToken());
+    try std.testing.expectEqual(LexerError.UnknownToken, lexer.getError());
 }

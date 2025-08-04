@@ -85,7 +85,7 @@ pub const Value = union(enum) {
     }
     // asserts that it is instance of a string and returns it's copy.
     pub fn copyString(self: Self, alloc: std.mem.Allocator) ![]const u8 {
-        if(self != .string) return error.NotAString;
+        if (self != .string) return error.NotAString;
         return try alloc.dupe(u8, self.string);
     }
 };
@@ -123,8 +123,7 @@ pub const Parser = struct {
 
     //  As of now array of different type values is acceptable
     fn parseArray(self: *Self) (ParseError || std.mem.Allocator.Error)![]Value {
-        self.lexer.assertSymbol(.square_left) catch return ParseError.SyntaxError;
-        self.lexer.skipToken();
+        try self.expectSymbol(.square_left);
 
         var items = std.ArrayList(Value).init(self.alloc);
         errdefer items.deinit();
@@ -143,17 +142,13 @@ pub const Parser = struct {
 
             try items.append(value);
         }
-
-        self.lexer.assertSymbol(.square_right) catch return ParseError.SyntaxError;
-        self.lexer.skipToken();
-
+        try self.expectSymbol(.square_right);
         return try items.toOwnedSlice();
     }
 
     // Copies the identifier into the object name field
     fn parseObject(self: *Self, identifier: []const u8) (ParseError || std.mem.Allocator.Error)!Object {
-        self.lexer.assertSymbol(.curly_left) catch return ParseError.SyntaxError;
-        self.lexer.skipToken();
+        try self.expectSymbol(.curly_left);
 
         var object = Object{ .name = try self.alloc.dupe(u8, identifier), .fields = std.StringHashMap(Value).init(self.alloc) };
         errdefer object.deinit(self.alloc);
@@ -163,14 +158,12 @@ pub const Parser = struct {
                 break;
 
             const entry = try self.parseAssignment();
-            self.lexer.assertSymbol(.semicolon) catch return ParseError.SyntaxError;
-            self.lexer.skipToken();
+            try self.expectSymbol(.semicolon);
 
             object.fields.putNoClobber(entry.key, entry.value) catch return ParseError.ObjectDuplicateField;
         }
 
-        self.lexer.assertSymbol(.curly_right) catch return ParseError.SyntaxError;
-        self.lexer.skipToken();
+        try self.expectSymbol(.curly_right);
 
         return object;
     }
@@ -183,8 +176,7 @@ pub const Parser = struct {
         const ident_token = self.lexer.nextToken() orelse return ParseError.AssignmentIdentifierMissing;
         const identifier = ident_token.identifier;
 
-        self.lexer.assertSymbol(.assign) catch return ParseError.SyntaxError;
-        self.lexer.skipToken();
+        try self.expectSymbol(.assign);
 
         const value = try self.parseValue();
         return Entry{ .key = try self.alloc.dupe(u8, identifier), .value = value };
@@ -198,19 +190,18 @@ pub const Parser = struct {
                 return Value{ .string = try self.alloc.dupe(u8, str) };
             },
             .identifier => |ident| {
+                // Skipping identifier
                 self.lexer.skipToken();
 
-                if (self.lexer.assertSymbol(.curly_left)) {
-                    // Object
-                    return Value{ .object = try self.parseObject(ident) };
+                if (self.parseObject(ident)) |object| {
+                    return Value{ .object = object };
                 } else |_| {
-                    // Variable assignemnt
                     std.debug.panic("Assignment to identifiers not implemented\n", .{});
                 }
             },
             .symbol => |s| {
-                if (s == .square_left) return Value{ .list = try self.parseArray() };
-
+                if (s == .square_left)
+                    return Value{ .list = try self.parseArray() };
                 return ParseError.SyntaxError;
             },
             else => {
@@ -218,6 +209,13 @@ pub const Parser = struct {
                 return ParseError.InvalidValue;
             },
         }
+    }
+    fn expectSymbol(self: *Self, symbol: lxr.Symbol) ParseError!void {
+        const token = self.lexer.nextToken();
+        if (token != null and token.? == .symbol and token.?.symbol == symbol) return;
+
+        std.log.err("Line {d}:{d} (Error:{any})| Expected symbol {s} but got {any}", .{ self.lexer.current_line, self.lexer.current_line_char, self.lexer.getError(), symbol.toString(), token });
+        return ParseError.SyntaxError;
     }
 };
 

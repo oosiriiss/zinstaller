@@ -5,11 +5,10 @@ const loadConfig = @import("load_config.zig").loadConfig;
 const finalizePackages = @import("setup_packages.zig").finalizePackages;
 const downloadPackages = @import("setup_packages.zig").downloadPackages;
 
+
 pub fn main() !void {
     // TODO :: Add some sort of validation if there are two packages with different fields specified in config
-    // TODO :: Review the allocators - change page_allocator?
-    // TODO :: Introduce detection of duplicate packages when reading package list;
-    // TODO :: Printing a list of selected packages or just names
+    // TODO :: Printing a list of selected packages or just names (after selecting)
     // TODO :: Allow aboslute paths in config
     // TODO :: Detect missing fields when parsing config
     // POSSBILE_TODO :: improve creating package and config objects by introducing some shared methods like for parsing string/ creating the field maps etc.
@@ -38,6 +37,7 @@ pub fn main() !void {
     defer alloc.free(final_packages);
 
     try downloadPackages(final_packages);
+
 }
 
 test {
