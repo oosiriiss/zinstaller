@@ -7,7 +7,7 @@ const BASE_SCRIPTS_DIR_PATH = "./scripts";
 const BASE_DOTFILES_DIR_PATH = "./doftiles";
 const BASE_PACKAGES_FILE_PATH = "./packages.list";
 
-const Config = struct {
+pub const Config = struct {
     scripts_dir_path: []const u8,
     dotfiles_dir_path: []const u8,
     packages_file_path: []const u8,
@@ -38,7 +38,7 @@ pub fn loadConfig(filename: []const u8, alloc: std.mem.Allocator) !Config {
     const file_content = try util.readAllAlloc(file, alloc);
     defer alloc.free(file_content);
 
-    var lexer = lxr.Lexer.init(file_content);
+    var lexer = lxr.Lexer.init(file_content, alloc);
     defer lexer.deinit();
     var parser = ast.Parser.init(&lexer, alloc);
 

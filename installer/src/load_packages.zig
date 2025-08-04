@@ -90,7 +90,7 @@ pub fn loadPackages(packages_file_path: []const u8, alloc: std.mem.Allocator) ![
 
     _ = try file.readAll(file_content);
 
-    var lexer = lxr.Lexer.init(file_content);
+    var lexer = lxr.Lexer.init(file_content, alloc);
     defer lexer.deinit();
     var parser = ast.Parser.init(&lexer, alloc);
 

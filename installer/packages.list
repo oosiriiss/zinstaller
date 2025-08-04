@@ -5,10 +5,9 @@
       // Optional description displayed in a list (May not be present)
       description = "Window manager";
       // Optional Bash command that will be executed to setup the package
-      setup_command = "echo \"Setup\""
+      setup_command = "echo \"Setup\"";
       // Optional list of dependecy packages (May not be present)
       dependencies = [
-	 package {}
       ];
    },
    package {

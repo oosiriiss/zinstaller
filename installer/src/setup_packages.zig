@@ -1,15 +1,32 @@
 const std = @import("std");
 const PackageDescriptor = @import("load_packages.zig").PackageDescriptor;
 const PackageContext = @import("load_packages.zig").PackageContext;
+const Config = @import("load_config.zig").Config;
 const util = @import("util.zig");
 
+const SetupStatus = enum {
+    // Package is yet to be downloaded
+    download,
+    // package is yet to be setup
+    setup,
+    // Package setup has finished
+    finished,
+};
+
+const PackageStatus = struct {
+    package: *const PackageDescriptor,
+    status: SetupStatus,
+};
 
 // Allocates memory and merges packages and dependenices into one big slice.
 // Dependencies are put before packages
 // Dependency duplicates are ignored.
 // Original package slice cannot be null
 pub fn finalizePackages(original: []const PackageDescriptor, alloc: std.mem.Allocator) ![]PackageDescriptor {
-    if (original.len == 0) return error.NoPackages;
+    if (original.len == 0) {
+        std.log.err("No packages selected.", .{});
+        return error.NoPackages;
+    }
 
     const Map = std.ArrayHashMap(PackageDescriptor, void, PackageContext, true);
 
@@ -35,16 +52,73 @@ pub fn finalizePackages(original: []const PackageDescriptor, alloc: std.mem.Allo
     return try alloc.dupe(PackageDescriptor, map.keys());
 }
 
-pub fn downloadPackages(packages: []const PackageDescriptor) !void {
+pub fn downloadPackages(packages: []PackageStatus) !void {
     // For now only yay supported :)
     try assertYayExists();
     try performYaySync();
 
-    // const packages = preparePackagesSlice(original_packages, std.heap.page_allocator)
-
-    for (packages) |package| {
-        try downloadPackage(package);
+    for (packages) |*package| {
+        if (package.status == .download) {
+            downloadPackage(package.package.name) catch continue;
+            package.status = .setup;
+        } else {
+            std.log.err("Package \"{s}\" is not set for download - skipping it (Status:{any})", .{ package.package.name, package.status });
+        }
     }
+}
+
+pub fn createPackageStatusSlice(packages: []const PackageDescriptor, alloc: std.mem.Allocator) (std.mem.Allocator.Error)![]PackageStatus {
+    const statuses = try alloc.alloc(PackageStatus, packages.len);
+    for (packages, 0..) |*p, i| {
+        statuses[i].package = p;
+        statuses[i].status = .download;
+    }
+    return statuses;
+}
+
+// Proceeds to invoke setup command for each script that is at the setup stage.
+// if the command fails the package is skipped
+// Assumes config fields are validated.
+pub fn setupPackages(packages: []PackageStatus, config: Config, alloc: std.mem.Allocator) !void {
+    for (packages) |*p| {
+        if (p.status == .setup) {
+            if (setupPackage(p.package, config.dotfiles_dir_path, alloc)) {
+                p.status = SetupStatus.finished;
+            }
+        } else {
+            std.log.err("Package \"{s}\" is not set for setup - skipping it (Status:{any})", .{ p.package.name, p.status });
+        }
+    }
+}
+
+// Assumes the package is at a setup stage and dotfiles_dir_path is a valid directory
+// Each package gets these ENV VARS
+//  - DOTFILES_DIR_PATH - path to dotfiles directory
+fn setupPackage(package: *const PackageDescriptor, dotfiles_dir_path: []const u8, alloc: std.mem.Allocator) bool {
+    // setup command is null so basically setup is finished
+    if (package.setup_command == null) return true;
+
+    var child = std.process.Child.init(&.{ "bash", "-c", package.setup_command.? }, alloc);
+
+    // Setting up child env
+    // As for now it overrides the parent envs - dont know if it will be a problem
+    var env = std.process.EnvMap.init(alloc);
+    env.put("DOTFILES_DIR_PATH", dotfiles_dir_path) catch return false;
+
+    child.env_map = &env;
+    child.stdin_behavior = .Inherit;
+    child.stdout_behavior = .Inherit;
+
+    const term = child.spawnAndWait() catch |err| {
+        std.log.err("Error when running \"{s}\" setup command for package \"{s}\" (error: {any})", .{ package.setup_command.?, package.name, err });
+        return false;
+    };
+
+    if (term == .Exited and term.Exited == 0)
+        return true;
+
+    std.log.err("The setup command \"{s}\" for package \"{s}\" didn't return successfully. (Termination:{any})", .{ package.setup_command.?, package.name, term });
+    return false;
 }
 
 fn assertYayExists() !void {
@@ -58,10 +132,10 @@ fn performYaySync() !void {
     std.log.info("Yay -Sy", .{});
 }
 
-fn downloadPackage(package: PackageDescriptor) !void {
-    std.log.info("Downloading package: {s}", .{package.name});
+fn downloadPackage(package_name: []const u8) !void {
+    std.log.info("Downloading package: {s}", .{package_name});
 
-    util.runCommand(&[_][]const u8{ "yay", "-S", package.name }) catch {
+    util.runCommand(&[_][]const u8{ "yay", "-S", package_name }) catch {
         std.log.info("Download Failed", .{});
         return error.DownloadFailed;
     };
@@ -69,16 +143,10 @@ fn downloadPackage(package: PackageDescriptor) !void {
     std.log.info("Download success", .{});
 }
 
-////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////
-
-test "preparePackagesSlice removes packages with duplicate names on the same level" {
+test "finalizePackages removes packages with duplicate names on the same level" {
     const packages = [_]PackageDescriptor{
-        .{ .name = "Test1", .description = null, .dependencies = null, .setup_command=null},
-        .{ .name = "Test1", .description = null, .dependencies = null, .setup_command=null},
+        .{ .name = "Test1", .description = null, .dependencies = null },
+        .{ .name = "Test1", .description = null, .dependencies = null },
     };
 
     const out = try finalizePackages(&packages, std.testing.allocator);
@@ -86,92 +154,15 @@ test "preparePackagesSlice removes packages with duplicate names on the same lev
     try std.testing.expectEqual(1, out.len);
 }
 
-test "preparePackagesSlice removes packages with duplicate on the nested levels" {
-    var test1_deps: [1]PackageDescriptor = .{
-        .{ .name = "Test1", .description = null, .dependencies = null, .setup_command=null},
-    };
-    var test2_deps: [1]PackageDescriptor = .{
-        .{ .name = "Test2", .description = null, .dependencies = null, .setup_command=null},
-    };
-    var test22_deps: [1]PackageDescriptor = .{
-        .{ .name = "Test2", .description = null, .dependencies = null, .setup_command=null},
+test "finalizePackages removes packages with duplicate  on the nested levels" {
+    const packages = [_]PackageDescriptor{
+        .{ .name = "Test1", .description = null, .dependencies = [_]PackageDescriptor{
+            .{ .name = "Test1", .description = null, .dependencies = null },
+        } },
+        .{ .name = "Test2", .description = null, .dependencies = null },
     };
 
-    var test5_deps: [1]PackageDescriptor = .{
-        .{ .name = "Test5", .description = null, .dependencies = &test22_deps, .setup_command=null},
-    };
-
-    const packages: []const PackageDescriptor = &.{
-        .{ .name = "Test1", .description = null, .dependencies = &test1_deps, .setup_command=null},
-        .{ .name = "Test2", .description = null, .dependencies = null, .setup_command=null},
-        .{ .name = "Test3", .description = null, .dependencies = &test2_deps, .setup_command=null},
-        .{ .name = "Test4", .description = null, .dependencies = &test5_deps, .setup_command=null},
-    };
-
-    const out = try finalizePackages(packages, std.testing.allocator);
+    const out = try finalizePackages(&packages, std.testing.allocator);
     defer std.testing.allocator.free(out);
-    try std.testing.expectEqual(5, out.len);
-}
-
-test "preparePackagesSlice removes packages with nested packages come before " {
-    var depth4: [1]PackageDescriptor = .{
-        .{ .name = "Depth4", .description = null, .dependencies = null, .setup_command=null},
-    };
-    var depth3: [1]PackageDescriptor = .{
-        .{ .name = "Depth3", .description = null, .dependencies = &depth4, .setup_command=null},
-    };
-    var depth2: [1]PackageDescriptor = .{
-        .{ .name = "Depth2", .description = null, .dependencies = &depth3, .setup_command=null},
-    };
-
-    var depth1: [1]PackageDescriptor = .{
-        .{ .name = "Depth1", .description = null, .dependencies = &depth2, .setup_command=null},
-    };
-
-    const packages: []const PackageDescriptor = &.{
-        .{ .name = "Test1", .description = null, .dependencies = null, .setup_command=null},
-        .{ .name = "Test2", .description = null, .dependencies = null, .setup_command=null},
-        .{ .name = "Test3", .description = null, .dependencies = &depth1, .setup_command=null},
-        .{ .name = "Test4", .description = null, .dependencies = null, .setup_command=null},
-    };
-
-    const out = try finalizePackages(packages, std.testing.allocator);
-    defer std.testing.allocator.free(out);
-    try std.testing.expectEqual(8, out.len);
-    try std.testing.expectEqualSlices(u8, "Test1", out[0].name);
-    try std.testing.expectEqualSlices(u8, "Test2", out[1].name);
-    try std.testing.expectEqualSlices(u8, "Depth4", out[2].name);
-    try std.testing.expectEqualSlices(u8, "Depth3", out[3].name);
-    try std.testing.expectEqualSlices(u8, "Depth2", out[4].name);
-    try std.testing.expectEqualSlices(u8, "Depth1", out[5].name);
-    try std.testing.expectEqualSlices(u8, "Test3", out[6].name);
-    try std.testing.expectEqualSlices(u8, "Test4", out[7].name);
-}
-
-test "preparePackagesSlice removes packages with duplicate packages are ignored" {
-    var depth11: [1]PackageDescriptor = .{.{ .name = "Depth11", .description = null, .dependencies = null, .setup_command=null}};
-    var depth2: [1]PackageDescriptor = .{.{ .name = "Depth2", .description = null, .dependencies = null, .setup_command=null}};
-    var depth1: [1]PackageDescriptor = .{.{ .name = "Depth1", .description = null, .dependencies = &depth2, .setup_command=null}};
-    var depth3_dup: [1]PackageDescriptor = .{.{ .name = "Depth3", .description = null, .dependencies = null, .setup_command=null}};
-    var depth2_dup: [1]PackageDescriptor = .{.{ .name = "Depth2", .description = null, .dependencies = &depth3_dup, .setup_command=null}};
-    var depth1_dup: [1]PackageDescriptor = .{.{ .name = "Depth1", .description = null, .dependencies = &depth2_dup, .setup_command=null}};
-
-    const packages: []const PackageDescriptor = &.{
-        .{ .name = "Test1", .description = null, .dependencies = &depth11, .setup_command=null},
-        .{ .name = "Test2", .description = null, .dependencies = &depth1, .setup_command=null},
-        .{ .name = "Test3", .description = null, .dependencies = null, .setup_command=null},
-        .{ .name = "Test4", .description = null, .dependencies = &depth1_dup, .setup_command=null},
-    };
-
-    const out = try finalizePackages(packages, std.testing.allocator);
-    defer std.testing.allocator.free(out);
-    try std.testing.expectEqual(8, out.len);
-    try std.testing.expectEqualSlices(u8, "Depth11", out[0].name);
-    try std.testing.expectEqualSlices(u8, "Test1", out[1].name);
-    try std.testing.expectEqualSlices(u8, "Depth2", out[2].name);
-    try std.testing.expectEqualSlices(u8, "Depth1", out[3].name);
-    try std.testing.expectEqualSlices(u8, "Test2", out[4].name);
-    try std.testing.expectEqualSlices(u8, "Test3", out[5].name);
-    try std.testing.expectEqualSlices(u8, "Depth3", out[6].name);
-    try std.testing.expectEqualSlices(u8, "Test4", out[7].name);
+    try std.testing.expectEqual(1, out.len);
 }
