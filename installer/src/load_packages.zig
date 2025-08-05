@@ -31,6 +31,7 @@ pub const PackageDescriptor = struct {
             for (dps) |d| {
                 d.deinit(alloc);
             }
+            alloc.free(dps);
         }
     }
 
@@ -90,14 +91,13 @@ pub fn loadPackages(packages_file_path: []const u8, alloc: std.mem.Allocator) ![
 
     _ = try file.readAll(file_content);
 
-    var lexer = lxr.Lexer.init(file_content, alloc);
-    defer lexer.deinit();
+    var lexer = lxr.Lexer.init(file_content);
     var parser = ast.Parser.init(&lexer, alloc);
 
     var ast_tree = try parser.build();
     defer ast_tree.deinit();
 
-    const parsed = try createPackages(ast_tree.root.list);
+    const parsed = try createPackages(ast_tree.root.list, alloc);
 
     if (comptime @import("builtin").mode == .Debug) {
         std.debug.print("====================== AST  ====================\n", .{});
@@ -117,19 +117,30 @@ pub fn loadPackages(packages_file_path: []const u8, alloc: std.mem.Allocator) ![
     return parsed;
 }
 
-fn createPackages(ast_tree: []ast.Value) (PackageError || std.mem.Allocator.Error)![]PackageDescriptor {
-    var arr = std.ArrayList(PackageDescriptor).init(std.heap.page_allocator);
-    defer arr.deinit();
+fn createPackages(ast_tree: []ast.Value, alloc: std.mem.Allocator) (PackageError || std.mem.Allocator.Error)![]PackageDescriptor {
+    var arr = std.ArrayList(PackageDescriptor).init(alloc);
+    errdefer arr.deinit();
 
     for (ast_tree) |object| {
-        try arr.append(try createPackage(object));
+        try arr.append(try createPackage(object, alloc));
     }
 
     return arr.toOwnedSlice();
 }
 
-fn createPackage(val: ast.Value) (PackageError || std.mem.Allocator.Error)!PackageDescriptor {
-    if (val != .object) return PackageError.InvalidFormat;
+fn createPackageFromString(v: ast.Value, alloc: std.mem.Allocator) (PackageError || std.mem.Allocator.Error)!PackageDescriptor {
+    if (v != .string) return PackageError.InvalidFormat;
+
+    return PackageDescriptor{
+        .name = try alloc.dupe(u8, v.string),
+        .description = null,
+        .setup_command = null,
+        .dependencies = null,
+    };
+}
+
+fn createPackage(val: ast.Value, alloc: std.mem.Allocator) (PackageError || std.mem.Allocator.Error)!PackageDescriptor {
+    if (val != .object) return createPackageFromString(val, alloc);
     if (!std.mem.eql(u8, val.object.name, PACKAGE_OBJECT_NAME)) return PackageError.InvalidFormat;
     const obj = val.object;
 
@@ -137,9 +148,8 @@ fn createPackage(val: ast.Value) (PackageError || std.mem.Allocator.Error)!Packa
 
     var pkg = PackageDescriptor{ .name = undefined, .description = null, .dependencies = null, .setup_command = null };
 
-    const alloc = std.heap.page_allocator;
-
     var str_field_map = std.StringHashMap(*?[]const u8).init(alloc);
+    defer str_field_map.deinit();
     try str_field_map.put("name", @ptrCast(&pkg.name));
     try str_field_map.put("description", &pkg.description);
     try str_field_map.put("setup_command", &pkg.setup_command);
@@ -152,7 +162,7 @@ fn createPackage(val: ast.Value) (PackageError || std.mem.Allocator.Error)!Packa
             str_field_ptr.* = value.copyString(alloc) catch return PackageError.InvalidFormat
         else if (std.mem.eql(u8, name, "dependencies")) {
             if (value != .list) return PackageError.InvalidFormat;
-            pkg.dependencies = try createPackages(value.list);
+            pkg.dependencies = try createPackages(value.list, alloc);
         } else {
             std.log.err("Unknown package field {s}", .{name});
             return PackageError.InvalidFormat;
@@ -177,11 +187,32 @@ test "Creating package without dependencies from AST" {
     var tree = try builder.build();
     defer tree.deinit();
 
-    const package = try createPackage(tree.root);
+    const package = try createPackage(tree.root, std.testing.allocator);
+    defer package.deinit(std.testing.allocator);
 
     try std.testing.expectEqualSlices(u8, package.name, "hyprland");
     try std.testing.expectEqualSlices(u8, package.description.?, "Window manager");
     try std.testing.expect(package.dependencies.?.len == 0);
+}
+
+test "Creating package from string" {
+    const content =
+        \\ "Package_name"
+    ;
+    var l = lxr.Lexer.init(content);
+
+    var builder = ast.Parser.init(&l, std.testing.allocator);
+
+    var tree = try builder.build();
+    defer tree.deinit();
+
+    var package = try createPackageFromString(tree.root, std.testing.allocator);
+    defer package.deinit(std.testing.allocator);
+    var package2 = try createPackage(tree.root, std.testing.allocator);
+    defer package2.deinit(std.testing.allocator);
+
+    try std.testing.expectEqualSlices(u8, "Package_name", package.name);
+    try std.testing.expectEqualSlices(u8, "Package_name", package2.name);
 }
 
 test "Creating package with single object dependency from AST" {
@@ -200,12 +231,14 @@ test "Creating package with single object dependency from AST" {
     ;
 
     var l = lxr.Lexer.init(content);
-    var builder = ast.Parser.init(&l, std.heap.page_allocator);
+
+    var builder = ast.Parser.init(&l, std.testing.allocator);
 
     var tree = try builder.build();
     defer tree.deinit();
 
-    const package = try createPackage(tree.root);
+    const package = try createPackage(tree.root, std.testing.allocator);
+    defer package.deinit(std.testing.allocator);
 
     try std.testing.expectEqualSlices(u8, package.name, "hyprland");
     try std.testing.expectEqualSlices(u8, package.description.?, "Window manager");
@@ -235,12 +268,15 @@ test "Creating package with multiple object dependency from AST" {
         \\}
     ;
 
-    var l = lxr.Lexer.init(content);
-    var builder = ast.Parser.init(&l, std.heap.page_allocator);
+    var lexer = lxr.Lexer.init(content);
 
-    const tree = try builder.build();
+    var builder = ast.Parser.init(&lexer, std.testing.allocator);
 
-    const package = try createPackage(tree.root);
+    var tree = try builder.build();
+    defer tree.deinit();
+
+    const package = try createPackage(tree.root, std.testing.allocator);
+    defer package.deinit(std.testing.allocator);
 
     try std.testing.expectEqualSlices(u8, package.name, "hyprland");
     try std.testing.expectEqualSlices(u8, package.description.?, "Window manager");

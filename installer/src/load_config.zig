@@ -38,8 +38,7 @@ pub fn loadConfig(filename: []const u8, alloc: std.mem.Allocator) !Config {
     const file_content = try util.readAllAlloc(file, alloc);
     defer alloc.free(file_content);
 
-    var lexer = lxr.Lexer.init(file_content, alloc);
-    defer lexer.deinit();
+    var lexer = lxr.Lexer.init(file_content);
     var parser = ast.Parser.init(&lexer, alloc);
 
     var ast_tree = try parser.build();

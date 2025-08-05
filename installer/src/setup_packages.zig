@@ -145,8 +145,8 @@ fn downloadPackage(package_name: []const u8) !void {
 
 test "finalizePackages removes packages with duplicate names on the same level" {
     const packages = [_]PackageDescriptor{
-        .{ .name = "Test1", .description = null, .dependencies = null },
-        .{ .name = "Test1", .description = null, .dependencies = null },
+        .{ .name = "Test1", .description = null, .dependencies = null, .setup_command = null },
+        .{ .name = "Test1", .description = null, .dependencies = null, .setup_command = null },
     };
 
     const out = try finalizePackages(&packages, std.testing.allocator);
@@ -154,15 +154,112 @@ test "finalizePackages removes packages with duplicate names on the same level" 
     try std.testing.expectEqual(1, out.len);
 }
 
-test "finalizePackages removes packages with duplicate  on the nested levels" {
+test "finalizePackages removes packages with duplicate name on the single nested level" {
+    var t1_s: [1]PackageDescriptor = .{.{
+        .name = "Test1",
+        .description = null,
+        .dependencies = null,
+        .setup_command = null,
+    }};
+    var t2_s: [2]PackageDescriptor = .{ .{
+        .name = "Test2",
+        .description = null,
+        .dependencies = null,
+        .setup_command = null,
+    }, .{
+        .name = "Test3",
+        .description = null,
+        .dependencies = null,
+        .setup_command = null,
+    } };
+
     const packages = [_]PackageDescriptor{
-        .{ .name = "Test1", .description = null, .dependencies = [_]PackageDescriptor{
-            .{ .name = "Test1", .description = null, .dependencies = null },
-        } },
-        .{ .name = "Test2", .description = null, .dependencies = null },
+        .{
+            .name = "Test1",
+            .description = null,
+            .dependencies = &t1_s,
+            .setup_command = null,
+        },
+        .{
+            .name = "Test2",
+            .description = null,
+            .dependencies = &t2_s,
+            .setup_command = null,
+        },
     };
 
     const out = try finalizePackages(&packages, std.testing.allocator);
     defer std.testing.allocator.free(out);
-    try std.testing.expectEqual(1, out.len);
+    try std.testing.expectEqual(3, out.len);
+    try std.testing.expectEqualSlices(u8, "Test1", out[0].name);
+    try std.testing.expectEqualSlices(u8, "Test2", out[1].name);
+    try std.testing.expectEqualSlices(u8, "Test3", out[2].name);
+}
+
+test "finalizePackages removes packages with duplicate name on the multiple nested levels" {
+    var t1_s: [1]PackageDescriptor = .{.{
+        .name = "Test6",
+        .description = null,
+        .dependencies = null,
+        .setup_command = null,
+    }};
+    var t3_s: [3]PackageDescriptor = .{
+        .{
+            .name = "Test3",
+            .description = null,
+            .dependencies = null,
+            .setup_command = null,
+        },
+        .{
+            .name = "Test3",
+            .description = null,
+            .dependencies = null,
+            .setup_command = null,
+        },
+        .{
+            .name = "Test4",
+            .description = null,
+            .dependencies = null,
+            .setup_command = null,
+        },
+    };
+    var t2_s: [2]PackageDescriptor = .{ .{
+        .name = "Test2",
+        .description = null,
+        .dependencies = &t3_s,
+        .setup_command = null,
+    }, .{
+        .name = "Test3",
+        .description = null,
+        .dependencies = null,
+        .setup_command = null,
+    } };
+
+    const packages = [_]PackageDescriptor{ .{
+        .name = "Test1",
+        .description = null,
+        .dependencies = &t1_s,
+        .setup_command = null,
+    }, .{
+        .name = "Test2",
+        .description = null,
+        .dependencies = &t2_s,
+        .setup_command = null,
+    }, .{
+        .name = "Test5",
+        .description = null,
+        .dependencies = null,
+        .setup_command = null,
+    } };
+
+    const out = try finalizePackages(&packages, std.testing.allocator);
+    defer std.testing.allocator.free(out);
+    try std.testing.expectEqual(6, out.len);
+    try std.testing.expectEqualSlices(u8, "Test6", out[0].name);
+    try std.testing.expectEqualSlices(u8, "Test1", out[1].name);
+    try std.testing.expectEqualSlices(u8, "Test3", out[2].name);
+    try std.testing.expectEqualSlices(u8, "Test4", out[3].name);
+    try std.testing.expectEqualSlices(u8, "Test2", out[4].name);
+    try std.testing.expectEqualSlices(u8, "Test5", out[5].name);
+
 }

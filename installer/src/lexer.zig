@@ -85,7 +85,7 @@ const Token = union(enum) {
     }
 };
 
-const LexerError = (error{ UnknownToken, UnterminatedString, EOF } || std.mem.Allocator.Error);
+const LexerError = error{ UnknownToken, UnterminatedString, EOF };
 
 // The lexer doesn't allocate anything all the slices come directly from the source text.
 pub const Lexer = struct {
@@ -93,33 +93,25 @@ pub const Lexer = struct {
     content: []const u8,
     /// Current position inside content
     index: usize,
-    // buffer for strings
-    string_buffer: ?[]const u8,
     // only for errors
     // Line number of current content
     current_line: usize,
     // Column of the
     current_line_char: usize,
-    //
+    // Current error or null if everyting is ok
     current_error: ?LexerError,
 
-    alloc: std.mem.Allocator,
-
     const Self = @This();
-    pub fn init(content: []const u8, alloc: std.mem.Allocator) Self {
+    pub fn init(content: []const u8) Self {
         return .{
             .content = content,
             .index = 0,
-            .string_buffer = null,
             .current_line = 1,
             .current_line_char = 1,
             .current_error = null,
-            .alloc = alloc,
         };
     }
-    pub fn deinit(self: *Self) void {
-        self.invalidateLastStringToken();
-    }
+
     pub fn debugPrint(self: *Self) void {
         const saved_index = self.index;
         self.index = 0;
@@ -144,7 +136,6 @@ pub const Lexer = struct {
     pub fn nextToken(self: *Self) ?Token {
         if (self.current_error != null) return null;
         self.skipIgnorable();
-        self.invalidateLastStringToken();
 
         if (!self.canReadChar()) {
             self.current_error = LexerError.EOF;
@@ -269,23 +260,22 @@ pub const Lexer = struct {
         return error.InvalidSymbol;
     }
 
-    fn readString(self: *Self) (error{UnterminatedString} || std.mem.Allocator.Error)![]const u8 {
+    // It reads the content of the string until the next " character
+    // '\' is encounterd the next character will be treated as a string content,
+    // so for example " will be skipped. No substitution is done for special characters
+    // e.g. '\n' is still outputted as 2 separate characters.
+    // for '\' use '\\'
+    fn readString(self: *Self) error{UnterminatedString}![]const u8 {
         const start_line = self.current_line;
         const start_line_char = self.current_line_char;
+
         // Skipping Beggining of string (")
         _ = self.readChar();
         const content_start = self.index;
 
-        // Custom buffer is needed essentially for handling special characters like '\n' '\"' etc.
-        var string = std.ArrayList(u8).init(self.alloc);
-        errdefer string.deinit();
-
         while (self.canReadChar() and self.peekChar() != '"') {
-            var c = self.readChar();
-            if (c == '\\') {
-                c = createSpecialChar(self.readChar());
-                try string.append(c);
-            } else try string.append(c);
+            if (self.readChar() == '\\')
+                _ = self.readChar();
         }
 
         if (!self.canReadChar()) {
@@ -299,25 +289,7 @@ pub const Lexer = struct {
         // Skipping end of string (")
         _ = self.readChar();
 
-        self.string_buffer = try string.toOwnedSlice();
-        return self.string_buffer.?;
-    }
-
-    fn invalidateLastStringToken(self: *Self) void {
-        if (self.string_buffer) |b| {
-            self.alloc.free(b);
-            self.string_buffer = null;
-        }
-    }
-    // if the previouscharacter was a \ in
-    // if the character is an unkown special character just the input character is returned.
-    fn createSpecialChar(c: u8) u8 {
-        return switch (c) {
-            'n' => '\n',
-            'r' => '\r',
-            '0' => 0,
-            else => c,
-        };
+        return self.content[content_start..(self.index - 1)];
     }
 
     fn readIdentifier(self: *Self) []const u8 {
@@ -408,10 +380,10 @@ const test_keyword_map = if (@import("builtin").is_test) std.StaticStringMap(Tes
 test "Separating single-char symbols" {
     const sample_content = "{}";
 
-    var l1 = Lexer.init(sample_content, std.testing.allocator);
+    var lexer = Lexer.init(sample_content);
 
-    try std.testing.expectEqual(Symbol.curly_left, l1.nextToken().?.symbol);
-    try std.testing.expectEqual(Symbol.curly_right, l1.nextToken().?.symbol);
+    try std.testing.expectEqual(Symbol.curly_left, lexer.nextToken().?.symbol);
+    try std.testing.expectEqual(Symbol.curly_right, lexer.nextToken().?.symbol);
 }
 
 test "Skipping comments" {
@@ -427,8 +399,7 @@ test "Skipping comments" {
         \\ lala = "234";
     ;
 
-    var lexer = Lexer.init(sample_content, std.testing.allocator);
-    defer lexer.deinit();
+    var lexer = Lexer.init(sample_content);
 
     try std.testing.expectEqualSlices(u8, "huj", lexer.nextToken().?.identifier);
     try std.testing.expectEqual(Symbol.assign, lexer.nextToken().?.symbol);
@@ -443,8 +414,7 @@ test "Skipping comments" {
 test "Separating longer tokens" {
     const sample_content = "token";
 
-    var lexer = Lexer.init(sample_content, std.testing.allocator);
-    defer lexer.deinit();
+    var lexer = Lexer.init(sample_content);
 
     try std.testing.expectEqualSlices(u8, "token", lexer.nextToken().?.identifier);
 }
@@ -452,8 +422,7 @@ test "Separating longer tokens" {
 test "Separating token chains tokens" {
     const sample_content = "{token} tokeninho";
 
-    var lexer = Lexer.init(sample_content, std.testing.allocator);
-    defer lexer.deinit();
+    var lexer = Lexer.init(sample_content);
 
     try std.testing.expectEqual(Symbol.curly_left, lexer.nextToken().?.symbol);
     try std.testing.expectEqualSlices(u8, "token", lexer.nextToken().?.identifier);
@@ -464,8 +433,7 @@ test "Separating token chains tokens" {
 test "Parsing keywords" {
     const sample_content = "if else switch";
 
-    var lexer = Lexer.init(sample_content, std.testing.allocator);
-    defer lexer.deinit();
+    var lexer = Lexer.init(sample_content);
 
     const t1 = lexer.nextToken().?;
     const t2 = lexer.nextToken().?;
@@ -478,8 +446,7 @@ test "Parsing keywords" {
 
 test "Unterminated string should set lexer error" {
     const sample_content = "\"Some string content that is not terminated";
-    var lexer = Lexer.init(sample_content, std.testing.allocator);
-    defer lexer.deinit();
+    var lexer = Lexer.init(sample_content);
 
     try std.testing.expectEqual(null, lexer.nextToken());
     try std.testing.expectEqual(LexerError.UnterminatedString, lexer.getError());
@@ -487,25 +454,22 @@ test "Unterminated string should set lexer error" {
 
 test "Unknown symbol should set lexer error" {
     const sample_content = "%";
-    var lexer = Lexer.init(sample_content, std.testing.allocator);
-    defer lexer.deinit();
+    var lexer = Lexer.init(sample_content);
 
     try std.testing.expectEqual(null, lexer.nextToken());
     try std.testing.expectEqual(LexerError.UnknownToken, lexer.getError());
 }
 
-test "Backslash allows to skip special characters in string sign" {
+test "Backslash allows to treat next character as normal char" {
     const sample_content = " \" String\\\" \" ";
-    var lexer = Lexer.init(sample_content, std.testing.allocator);
-    defer lexer.deinit();
+    var lexer = Lexer.init(sample_content);
 
-    try std.testing.expectEqualSlices(u8, " String\" ", lexer.nextToken().?.string_literal);
+    try std.testing.expectEqualSlices(u8, " String\\\" ", lexer.nextToken().?.string_literal);
 }
 
-test "Invalid string  because end is ignored with backslash" {
-    const sample_content = "\"String\\\"";
-    var lexer = Lexer.init(sample_content, std.testing.allocator);
-    defer lexer.deinit();
+test "Skipping ending \" should return unterminated error " {
+    const sample_content = " \" String \\\"  ";
+    var lexer = Lexer.init(sample_content);
 
     try std.testing.expectEqual(null, lexer.nextToken());
     try std.testing.expectEqual(LexerError.UnterminatedString, lexer.getError());
