@@ -17,6 +17,21 @@ const PackageStatus = struct {
     package: *const PackageDescriptor,
     status: SetupStatus,
 };
+pub fn printSelected(packages: []const PackageDescriptor, alloc: std.mem.Allocator) !void {
+    const SETUP_FOUND_STR = "(Setup found)";
+    const SETUP_NOT_FOUND_STR = "(No setup)";
+
+    var str = std.ArrayList(u8).init(alloc);
+    defer str.deinit();
+
+    for (packages, 1..) |p, num| {
+        const after_str = if (p.setup_command == null) SETUP_NOT_FOUND_STR else SETUP_FOUND_STR;
+        const line = try std.fmt.allocPrint(alloc, " {d}. {s} {s}\n", .{ num, p.name, after_str });
+        try str.appendSlice(line);
+        alloc.free(line);
+    }
+    std.log.info("These packages will be downloaded: \n{s}", .{str.items});
+}
 
 // Allocates memory and merges packages and dependenices into one big slice.
 // Dependencies are put before packages
@@ -261,5 +276,4 @@ test "finalizePackages removes packages with duplicate name on the multiple nest
     try std.testing.expectEqualSlices(u8, "Test4", out[3].name);
     try std.testing.expectEqualSlices(u8, "Test2", out[4].name);
     try std.testing.expectEqualSlices(u8, "Test5", out[5].name);
-
 }

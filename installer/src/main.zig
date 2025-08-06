@@ -2,6 +2,7 @@ const std = @import("std");
 const loadPackages = @import("load_packages.zig").loadPackages;
 const selectPackages = @import("select_packages.zig").selectPackages;
 const loadConfig = @import("load_config.zig").loadConfig;
+const printSelected = @import("setup_packages.zig").printSelected;
 const finalizePackages = @import("setup_packages.zig").finalizePackages;
 const createPackageStatuses = @import("setup_packages.zig").createPackageStatusSlice;
 const downloadPackages = @import("setup_packages.zig").downloadPackages;
@@ -14,7 +15,7 @@ pub fn main() !void {
     // TODO :: Detect missing fields when parsing config
     // TODO :: Check if passing a single slice (with spaces) to util.runCommand creates argv correctly
     // TODO :: allow rereading package statuses from some kind of lockfile
-    // TODO :: Allow string literals in dependencies
+    // TODO :: rewrite the printSelected function
     // POSSBILE_TODO :: improve creating package and config objects by introducing some shared methods like for parsing string/ creating the field maps etc.
 
     const CONFIG_PATH = "./installer.cfg";
@@ -39,6 +40,8 @@ pub fn main() !void {
     const selected_packages = try selectPackages(packages, std.io.getStdOut().writer().any());
     const final_packages = try finalizePackages(selected_packages, alloc);
     defer alloc.free(final_packages);
+
+    try printSelected(final_packages, alloc);
 
     const package_statuses = try createPackageStatuses(final_packages, alloc);
 
