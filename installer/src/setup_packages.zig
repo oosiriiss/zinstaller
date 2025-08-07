@@ -1,22 +1,11 @@
 const std = @import("std");
 const PackageDescriptor = @import("load_packages.zig").PackageDescriptor;
+const SetupStatus = @import("package_status.zig").SetupStatus;
+const PackageStatus = @import("package_status.zig").PackageStatus;
 const PackageContext = @import("load_packages.zig").PackageContext;
 const Config = @import("load_config.zig").Config;
 const util = @import("util.zig");
 
-const SetupStatus = enum {
-    // Package is yet to be downloaded
-    download,
-    // package is yet to be setup
-    setup,
-    // Package setup has finished
-    finished,
-};
-
-const PackageStatus = struct {
-    package: *const PackageDescriptor,
-    status: SetupStatus,
-};
 pub fn printSelected(packages: []const PackageDescriptor, alloc: std.mem.Allocator) !void {
     const SETUP_FOUND_STR = "(Setup found)";
     const SETUP_NOT_FOUND_STR = "(No setup)";
@@ -80,15 +69,6 @@ pub fn downloadPackages(packages: []PackageStatus) !void {
             std.log.err("Package \"{s}\" is not set for download - skipping it (Status:{any})", .{ package.package.name, package.status });
         }
     }
-}
-
-pub fn createPackageStatusSlice(packages: []const PackageDescriptor, alloc: std.mem.Allocator) (std.mem.Allocator.Error)![]PackageStatus {
-    const statuses = try alloc.alloc(PackageStatus, packages.len);
-    for (packages, 0..) |*p, i| {
-        statuses[i].package = p;
-        statuses[i].status = .download;
-    }
-    return statuses;
 }
 
 // Proceeds to invoke setup command for each script that is at the setup stage.

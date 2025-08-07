@@ -4,7 +4,8 @@ const selectPackages = @import("select_packages.zig").selectPackages;
 const loadConfig = @import("load_config.zig").loadConfig;
 const printSelected = @import("setup_packages.zig").printSelected;
 const finalizePackages = @import("setup_packages.zig").finalizePackages;
-const createPackageStatuses = @import("setup_packages.zig").createPackageStatusSlice;
+const createPackageStatuses = @import("package_status.zig").createPackageStatusSlice;
+const saveCacheEntries = @import("package_status.zig").saveCacheEntries;
 const downloadPackages = @import("setup_packages.zig").downloadPackages;
 const setupPackages = @import("setup_packages.zig").setupPackages;
 
@@ -16,6 +17,8 @@ pub fn main() !void {
     // TODO :: Check if passing a single slice (with spaces) to util.runCommand creates argv correctly
     // TODO :: allow rereading package statuses from some kind of lockfile
     // TODO :: rewrite the printSelected function
+    // TODO :: add lexer.getError() where lexer is used
+    // TODO :: cleanup package cache on finish
     // POSSBILE_TODO :: improve creating package and config objects by introducing some shared methods like for parsing string/ creating the field maps etc.
 
     const CONFIG_PATH = "./installer.cfg";
@@ -46,6 +49,7 @@ pub fn main() !void {
     const package_statuses = try createPackageStatuses(final_packages, alloc);
 
     try downloadPackages(package_statuses);
+    try saveCacheEntries(config.cache_file_path, package_statuses);
     try setupPackages(package_statuses, config, alloc);
 }
 

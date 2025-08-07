@@ -85,7 +85,7 @@ const Token = union(enum) {
     }
 };
 
-const LexerError = error{ UnknownToken, UnterminatedString, EOF };
+pub const LexerError = error{ UnknownToken, UnterminatedString, EOF };
 
 // The lexer doesn't allocate anything all the slices come directly from the source text.
 pub const Lexer = struct {
@@ -212,6 +212,7 @@ pub const Lexer = struct {
             std.debug.print("Identifier expected but got null\n", .{});
             return error.IdentifierAssertionFailed;
         };
+
         if (t != .identifier) {
             std.debug.print("Identifier expected but got {any}\n", .{t});
             return error.IdentifierAssertionFailed;

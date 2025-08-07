@@ -6,11 +6,13 @@ const util = @import("util.zig");
 const BASE_SCRIPTS_DIR_PATH = "./scripts";
 const BASE_DOTFILES_DIR_PATH = "./doftiles";
 const BASE_PACKAGES_FILE_PATH = "./packages.list";
+const BASE_CACHE_FILE_PATH = "./packages.cache";
 
 pub const Config = struct {
     scripts_dir_path: []const u8,
     dotfiles_dir_path: []const u8,
     packages_file_path: []const u8,
+    cache_file_path: []const u8,
 
     const Self = @This();
 
@@ -61,12 +63,14 @@ fn createConfig(obj: ast.Object, alloc: std.mem.Allocator) (ConfigError || std.m
         .scripts_dir_path = BASE_SCRIPTS_DIR_PATH,
         .dotfiles_dir_path = BASE_DOTFILES_DIR_PATH,
         .packages_file_path = BASE_PACKAGES_FILE_PATH,
+        .cache_file_path = BASE_CACHE_FILE_PATH,
     };
 
     var str_field_map = std.StringHashMap(*[]const u8).init(alloc);
     try str_field_map.put("scripts_dir", &config.scripts_dir_path);
     try str_field_map.put("dotfiles_dir", &config.dotfiles_dir_path);
     try str_field_map.put("packages_file", &config.packages_file_path);
+    try str_field_map.put("cache_file", &config.cache_file_path);
 
     while (field_iter.next()) |field| {
         const name = field.key_ptr.*;
