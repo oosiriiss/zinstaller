@@ -6,6 +6,7 @@ const printSelected = @import("setup_packages.zig").printSelected;
 const finalizePackages = @import("setup_packages.zig").finalizePackages;
 const createPackageStatuses = @import("package_status.zig").createPackageStatusSlice;
 const saveCacheEntries = @import("package_status.zig").saveCacheEntries;
+const loadCacheEntries = @import("package_status.zig").loadPackageStatusCache;
 const downloadPackages = @import("setup_packages.zig").downloadPackages;
 const setupPackages = @import("setup_packages.zig").setupPackages;
 
@@ -19,6 +20,8 @@ pub fn main() !void {
     // TODO :: rewrite the printSelected function
     // TODO :: add lexer.getError() where lexer is used
     // TODO :: cleanup package cache on finish
+    // TODO :: Writer to stdout instead of logging?
+    // TODO :: Fix the config load_config default parameter copying - the u8 shit
     // POSSBILE_TODO :: improve creating package and config objects by introducing some shared methods like for parsing string/ creating the field maps etc.
 
     const CONFIG_PATH = "./installer.cfg";
@@ -39,6 +42,8 @@ pub fn main() !void {
         }
         alloc.free(packages);
     }
+
+    try loadCacheEntries(config.cache_file_path, package_statuses, alloc);
 
     const selected_packages = try selectPackages(packages, std.io.getStdOut().writer().any());
     const final_packages = try finalizePackages(selected_packages, alloc);

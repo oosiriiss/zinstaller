@@ -4,6 +4,8 @@ const Lexer = @import("lexer.zig").Lexer;
 const Symbol = @import("lexer.zig").Symbol;
 const ast = @import("ast.zig");
 const util = @import("util.zig");
+const cli = @import("cli.zig");
+const finalizePackages = @import("setup_packages.zig").finalizePackages;
 
 pub const SetupStatus = enum {
     // Package is yet to be downloaded
@@ -15,6 +17,13 @@ pub const SetupStatus = enum {
 
     fn toString(self: @This()) []const u8 {
         return @tagName(self);
+    }
+
+    fn fromString(str: []const u8) !@This() {
+        for (std.enums.values(SetupStatus)) |e| {
+            if (std.mem.eql(u8, e.toString(), str)) return e;
+        }
+        return error.InvalidEnumString;
     }
 };
 
@@ -50,9 +59,15 @@ pub fn saveCacheEntries(cache_file_path: []const u8, statuses: []const PackageSt
 // and sets the corresponding statuses of the input package statuses
 // If the size of package cache doesn't match the statuses size error is returned
 // If the package names in the cache dont match the names in statuses error is returned
-pub fn loadPackageStatusCache(cache_file_path: []const u8, statuses: []PackageStatus, alloc: std.mem.Allocator) !void {
+pub fn loadPackageStatusCache(cache_file_path: []const u8, all_packages: []PackageDescriptor, alloc: std.mem.Allocator) !void {
     var file = try util.openFileReadonly(cache_file_path);
     defer file.close();
+
+    if (!cli.askConfirmation("Cache file found ({s}). do you want to resume configuration?\n", .{cache_file_path})) return;
+
+    const finalized_packages = try finalizePackages(all_packages, alloc);
+    defer deinit
+
     const cache_content = try util.readAllAlloc(file, alloc);
     defer alloc.free(cache_content);
 
@@ -64,10 +79,10 @@ pub fn loadPackageStatusCache(cache_file_path: []const u8, statuses: []PackageSt
     var cache_map = try parseCacheEntries(tree.root, alloc);
     defer cache_map.deinit();
 
-    try mergePackageStatuses(statuses, cache_map);
+    try mergePackageStatuses(statuses, &cache_map);
 }
 
-fn mergePackageStatuses(statuses: []PackageStatus, cache_status_map: *const std.StringHashMap(PackageStatus)) !void {
+fn mergePackageStatuses(statuses: []PackageStatus, cache_status_map: *const std.StringHashMap(SetupStatus)) !void {
     for (statuses) |*s| {
         if (cache_status_map.get(s.package.name)) |cache_status| {
             s.status = cache_status;
@@ -87,7 +102,11 @@ fn parseCacheEntries(object: ast.Value, alloc: std.mem.Allocator) !std.StringHas
     var fields_iter = object.object.fields.iterator();
 
     while (fields_iter.next()) |v| {
-        map.put(v.key_ptr, v.value_ptr);
+        if (v.value_ptr.* != .string) return error.CacheInvalid;
+
+        const ev = try SetupStatus.fromString(v.value_ptr.*.string);
+
+        try map.put(v.key_ptr.*, ev);
     }
 
     return map;
