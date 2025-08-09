@@ -54,9 +54,9 @@ pub const PackageDescriptor = struct {
 
         try writer.print("{s:^10} - {s:<20} - Dependencies {d}", .{ self.name, desc, self.countDependencies() });
     }
-    pub fn countDependencies(self: Self) u32 {
+    pub fn countDependencies(self: Self) usize {
         if (self.dependencies == null) return 0;
-        var sum: u32 = 0;
+        var sum: usize = self.dependencies.?.len;
         for (self.dependencies.?) |dep| sum = sum + dep.countDependencies();
         return sum;
     }

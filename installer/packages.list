@@ -7,8 +7,7 @@
       // Optional Bash command that will be executed to setup the package
       setup_command = "echo \"Setup\"";
       // Optional list of dependecy packages (May not be present)
-      dependencies = [
-      ];
+      dependencies = ["cwel"];
    },
    package {
       name = "sddm";

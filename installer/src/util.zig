@@ -66,7 +66,7 @@ pub fn readLine(buffer: []u8) ![]u8 {
     }
 }
 
-const OpenError = error{ AccessDenied, NotFound, UnknownError, IsDirectory };
+pub const OpenError = error{ AccessDenied, NotFound, UnknownError, IsDirectory };
 
 // Utility method for opening a file, Handles basic errors by printing to the stdout
 pub fn openFileReadonly(path: []const u8) OpenError!std.fs.File {

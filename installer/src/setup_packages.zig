@@ -56,34 +56,45 @@ pub fn finalizePackages(original: []const PackageDescriptor, alloc: std.mem.Allo
     return try alloc.dupe(PackageDescriptor, map.keys());
 }
 
-pub fn downloadPackages(packages: []PackageStatus) !void {
+pub fn downloadPackages(packages: []PackageStatus) bool {
     // For now only yay supported :)
-    try assertYayExists();
-    try performYaySync();
+    assertYayExists() catch return false;
+    performYaySync() catch return false;
+
+    var all_ok = true;
 
     for (packages) |*package| {
         if (package.status == .download) {
-            downloadPackage(package.package.name) catch continue;
+            downloadPackage(package.package.name) catch {
+                all_ok = false;
+                continue;
+            };
             package.status = .setup;
         } else {
             std.log.err("Package \"{s}\" is not set for download - skipping it (Status:{any})", .{ package.package.name, package.status });
         }
     }
+
+    return all_ok;
 }
 
 // Proceeds to invoke setup command for each script that is at the setup stage.
 // if the command fails the package is skipped
 // Assumes config fields are validated.
-pub fn setupPackages(packages: []PackageStatus, config: Config, alloc: std.mem.Allocator) !void {
+pub fn setupPackages(packages: []PackageStatus, config: Config, alloc: std.mem.Allocator) bool {
+    var all_ok = true;
     for (packages) |*p| {
         if (p.status == .setup) {
             if (setupPackage(p.package, config.dotfiles_dir_path, alloc)) {
                 p.status = SetupStatus.finished;
+            } else {
+                all_ok = false;
             }
         } else {
-            std.log.err("Package \"{s}\" is not set for setup - skipping it (Status:{any})", .{ p.package.name, p.status });
+            std.log.err("Package \"{s}\" is not set for setup - skipping it (Status:{s})", .{ p.package.name, p.status.toString() });
         }
     }
+    return all_ok;
 }
 
 // Assumes the package is at a setup stage and dotfiles_dir_path is a valid directory
@@ -130,10 +141,17 @@ fn performYaySync() !void {
 fn downloadPackage(package_name: []const u8) !void {
     std.log.info("Downloading package: {s}", .{package_name});
 
-    util.runCommand(&[_][]const u8{ "yay", "-S", package_name }) catch {
+    var child = std.process.Child.init(&[_][]const u8{ "yay", "-S", package_name }, std.heap.page_allocator);
+
+    const exit = child.spawnAndWait() catch {
         std.log.info("Download Failed", .{});
         return error.DownloadFailed;
     };
+
+    if (exit != .Exited or (exit == .Exited and exit.Exited == 0)) {
+        std.log.info("Download Failed", .{});
+        return error.DownloadFailed;
+    }
 
     std.log.info("Download success", .{});
 }

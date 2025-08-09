@@ -15,7 +15,7 @@ pub const SetupStatus = enum {
     // Package setup has finished
     finished,
 
-    fn toString(self: @This()) []const u8 {
+    pub fn toString(self: @This()) []const u8 {
         return @tagName(self);
     }
 
@@ -46,27 +46,26 @@ pub fn saveCacheEntries(cache_file_path: []const u8, statuses: []const PackageSt
     defer file.close();
     var file_writer = file.writer();
 
-    try file_writer.print("{s}\n", .{Symbol.curly_left.toString()});
+    try file_writer.print("cache {s}\n", .{Symbol.curly_left.toString()});
 
     for (statuses) |status| {
-        try file_writer.print("\t{s} {s} {s};\n", .{ status.package.name, Symbol.assign.toString(), status.status.toString() });
+        try file_writer.print("\t{s} {s} \"{s}\";\n", .{ status.package.name, Symbol.assign.toString(), status.status.toString() });
     }
 
     try file_writer.print("{s}", .{Symbol.curly_right.toString()});
 }
 
 // Loads all previous packages statuses from cache file
-// and sets the corresponding statuses of the input package statuses
-// If the size of package cache doesn't match the statuses size error is returned
-// If the package names in the cache dont match the names in statuses error is returned
-pub fn loadPackageStatusCache(cache_file_path: []const u8, all_packages: []PackageDescriptor, alloc: std.mem.Allocator) !void {
-    var file = try util.openFileReadonly(cache_file_path);
+// returns a map of package_name -> status
+pub fn loadCacheEntries(cache_file_path: []const u8, alloc: std.mem.Allocator) !?std.StringHashMap(SetupStatus) {
+    var file = util.openFileReadonly(cache_file_path) catch return null;
     defer file.close();
 
-    if (!cli.askConfirmation("Cache file found ({s}). do you want to resume configuration?\n", .{cache_file_path})) return;
-
-    const finalized_packages = try finalizePackages(all_packages, alloc);
-    defer deinit
+    if (!cli.askConfirmation("Cache file found ({s}). do you want to resume configuration?\n", .{cache_file_path})) {
+        // cleaning it just because i can, it'll be overriden anyway
+        cleanCache(cache_file_path) catch null;
+        return null;
+    }
 
     const cache_content = try util.readAllAlloc(file, alloc);
     defer alloc.free(cache_content);
@@ -76,13 +75,10 @@ pub fn loadPackageStatusCache(cache_file_path: []const u8, all_packages: []Packa
     var tree = try parser.build();
     defer tree.deinit();
 
-    var cache_map = try parseCacheEntries(tree.root, alloc);
-    defer cache_map.deinit();
-
-    try mergePackageStatuses(statuses, &cache_map);
+    return try parseCacheEntries(tree.root, alloc);
 }
 
-fn mergePackageStatuses(statuses: []PackageStatus, cache_status_map: *const std.StringHashMap(SetupStatus)) !void {
+pub fn mergePackageStatuses(statuses: []PackageStatus, cache_status_map: *const std.StringHashMap(SetupStatus)) !void {
     for (statuses) |*s| {
         if (cache_status_map.get(s.package.name)) |cache_status| {
             s.status = cache_status;
@@ -104,10 +100,42 @@ fn parseCacheEntries(object: ast.Value, alloc: std.mem.Allocator) !std.StringHas
     while (fields_iter.next()) |v| {
         if (v.value_ptr.* != .string) return error.CacheInvalid;
 
+        const name = try alloc.dupe(u8, v.key_ptr.*);
         const ev = try SetupStatus.fromString(v.value_ptr.*.string);
 
-        try map.put(v.key_ptr.*, ev);
+        try map.put(name, ev);
     }
 
     return map;
+}
+
+pub fn cleanCache(cache_file_path: []const u8) !void {
+    std.log.info("Deleting cache file: {s}", .{cache_file_path});
+    if (std.fs.cwd().deleteFile(cache_file_path)) {
+        std.log.info("Deleted successfully", .{});
+    } else |err| {
+        const e = std.fs.Dir.DeleteFileError;
+        const err_str = switch (err) {
+            e.AccessDenied => "Access Denied error",
+            e.IsDir => "File is directory error",
+            e.FileBusy => "File is in use error",
+            else => "Unknown error",
+        };
+        std.log.info("Couldn't delete file due to {s}. The cache file can be safely removed manually if necessary.", .{err_str});
+    }
+}
+
+test "SetupStatus to string" {
+    try std.testing.expectEqualSlices(u8, "setup", SetupStatus.setup.toString());
+    try std.testing.expectEqualSlices(u8, "download", SetupStatus.download.toString());
+    try std.testing.expectEqualSlices(u8, "finished", SetupStatus.finished.toString());
+}
+
+test "SetupStatus from string" {
+    try std.testing.expectEqual(SetupStatus.setup, SetupStatus.fromString("setup"));
+    try std.testing.expectEqual(SetupStatus.download, SetupStatus.fromString("download"));
+    try std.testing.expectEqual(SetupStatus.finished, SetupStatus.fromString("finished"));
+
+    try std.testing.expectError(error.InvalidEnumString, SetupStatus.fromString("invalid_enum"));
+
 }

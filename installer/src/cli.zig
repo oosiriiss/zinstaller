@@ -8,6 +8,7 @@ pub fn askConfirmation(comptime msg: []const u8, args: anytype) bool {
 
     while (true) {
         std.io.getStdOut().writer().print(msg, args) catch continue;
+        std.io.getStdOut().writer().print("(y/n)", .{}) catch continue;
 
         if (util.readLine(&buf)) |lineRaw| {
             const lowered_line = std.ascii.lowerString(&buf, lineRaw);

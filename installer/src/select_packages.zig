@@ -1,5 +1,6 @@
 const std = @import("std");
 const PackageDescriptor = @import("load_packages.zig").PackageDescriptor;
+const SetupStatus = @import("package_status.zig").SetupStatus;
 const util = @import("util.zig");
 const cli = @import("cli.zig");
 
@@ -15,6 +16,20 @@ const InputTokenType = enum {
 
 const InputToken = union(InputTokenType) { number: u32, range: Range };
 
+/// Modifies the slice
+/// Puts selected packages at the beginning of the slice
+/// Returns a slice with selected packages
+pub fn selectPackagesFromCache(packages: []PackageDescriptor, map: *const std.StringHashMap(SetupStatus)) []PackageDescriptor {
+    var current_index: usize = 0;
+
+    for (0..packages.len) |index| {
+        if (map.contains(packages[index].name)) {
+            std.mem.swap(PackageDescriptor, &packages[current_index], &packages[index]);
+            current_index = current_index + 1;
+        }
+    }
+    return packages[0..current_index];
+}
 // Modifies the origina slice and puts the selected packages at the beginning (and returns the new slice)
 pub fn selectPackages(packages: []PackageDescriptor, writer: std.io.AnyWriter) ![]PackageDescriptor {
     for (packages, 1..) |p, i| {
@@ -30,7 +45,7 @@ pub fn selectPackages(packages: []PackageDescriptor, writer: std.io.AnyWriter) !
         const numbers = askForPackageNumbers() catch continue;
 
         validateSelectedPackages(numbers.items, packages.len) catch {
-            if (cli.askConfirmation("Validation failed, do you want to redo selection? (All invalid choices will be ignored) (y/n) ", .{}))
+            if (cli.askConfirmation("Validation failed, do you want to redo selection? (All invalid choices will be ignored)", .{}))
                 continue;
         };
 
@@ -69,7 +84,7 @@ fn validateSelectedPackages(tokens: []const InputToken, package_count: usize) !v
 ///
 /// Returns a slice with selected packages
 ///
-fn filterSelectedPackages(packages: []PackageDescriptor, tokens: []const InputToken) ![]PackageDescriptor {
+fn filterSelectedPackages(packages: []PackageDescriptor, tokens: []const InputToken) []PackageDescriptor {
     var current_index: usize = 0;
 
     for (0..packages.len) |index| {
@@ -200,7 +215,7 @@ test "Filtering packages by package number" {
         PackageDescriptor{ .name = "P7", .description = "D7", .dependencies = null, .setup_command = null },
     };
 
-    const filtered = try filterSelectedPackages(&packages, &tokens);
+    const filtered = filterSelectedPackages(&packages, &tokens);
 
     try std.testing.expectEqual(3, filtered.len);
 
@@ -230,7 +245,7 @@ test "Filtering packages by package range" {
         PackageDescriptor{ .name = "P11", .description = "D11", .dependencies = null, .setup_command = null },
     };
 
-    const filtered = try filterSelectedPackages(&packages, &tokens);
+    const filtered = filterSelectedPackages(&packages, &tokens);
 
     try std.testing.expectEqual(8, filtered.len);
 
@@ -322,4 +337,30 @@ test "Not enough components in range" {
 
     const res4 = parseRangeToken("-10");
     try std.testing.expectError(error.InvalidRange, res4);
+}
+
+test "Selecting packages from cache" {
+    var cache_map = std.StringHashMap(SetupStatus).init(std.testing.allocator);
+    defer cache_map.deinit();
+    try cache_map.put("t1", SetupStatus.download);
+    try cache_map.put("t2", SetupStatus.download);
+    try cache_map.put("t3", SetupStatus.download);
+    try cache_map.put("t4", SetupStatus.download);
+
+    var packages = [_]PackageDescriptor{
+        .{ .name = "t1", .description = null, .dependencies = null, .setup_command = null },
+        .{ .name = "t69", .description = null, .dependencies = null, .setup_command = null },
+        .{ .name = "t3", .description = null, .dependencies = null, .setup_command = null },
+        .{ .name = "t4", .description = null, .dependencies = null, .setup_command = null },
+        .{ .name = "t2", .description = null, .dependencies = null, .setup_command = null },
+        .{ .name = "t5", .description = null, .dependencies = null, .setup_command = null },
+    };
+
+    const loaded = selectPackagesFromCache(&packages, &cache_map);
+
+    try std.testing.expectEqual(loaded.len, 4);
+    try std.testing.expectEqualSlices(u8, "t1", loaded[0].name);
+    try std.testing.expectEqualSlices(u8, "t3", loaded[1].name);
+    try std.testing.expectEqualSlices(u8, "t4", loaded[2].name);
+    try std.testing.expectEqualSlices(u8, "t2", loaded[3].name);
 }
