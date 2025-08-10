@@ -25,7 +25,7 @@ pub fn main() !void {
 
     const CONFIG_PATH = "./installer.cfg";
 
-    const logger = Logger;
+    // const logger = Logger;
 
     // All allocations done with arena so no real need for memory cleanup
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);

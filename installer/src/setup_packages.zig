@@ -82,10 +82,25 @@ pub fn downloadPackages(packages: []PackageStatus) bool {
 // if the command fails the package is skipped
 // Assumes config fields are validated.
 pub fn setupPackages(packages: []PackageStatus, config: Config, alloc: std.mem.Allocator) bool {
+    const scripts_cwd = std.fs.cwd().openDir(config.scripts_dir_path, .{}) catch |err| {
+        const OpenError = std.fs.Dir.OpenError;
+
+        const reason = switch (err) {
+            OpenError.NotDir => "is not a directory",
+            OpenError.FileNotFound => "not found",
+            OpenError.AccessDenied => "access denied",
+            else => "unknown error occurred",
+        };
+
+        std.log.info("Scripts working directory path: \"{s}\" {s}", .{ config.scripts_dir_path, reason });
+
+        return false;
+    };
+
     var all_ok = true;
     for (packages) |*p| {
         if (p.status == .setup) {
-            if (setupPackage(p.package, config.dotfiles_dir_path, alloc)) {
+            if (setupPackage(p.package, config.dotfiles_dir_path, scripts_cwd, alloc)) {
                 p.status = SetupStatus.finished;
             } else {
                 all_ok = false;
@@ -100,7 +115,12 @@ pub fn setupPackages(packages: []PackageStatus, config: Config, alloc: std.mem.A
 // Assumes the package is at a setup stage and dotfiles_dir_path is a valid directory
 // Each package gets these ENV VARS
 //  - DOTFILES_DIR_PATH - path to dotfiles directory
-fn setupPackage(package: *const PackageDescriptor, dotfiles_dir_path: []const u8, alloc: std.mem.Allocator) bool {
+fn setupPackage(
+    package: *const PackageDescriptor,
+    dotfiles_dir_path: []const u8,
+    cwd_dir: std.fs.Dir,
+    alloc: std.mem.Allocator,
+) bool {
     // setup command is null so basically setup is finished
     if (package.setup_command == null) return true;
 
@@ -111,6 +131,7 @@ fn setupPackage(package: *const PackageDescriptor, dotfiles_dir_path: []const u8
     var env = std.process.EnvMap.init(alloc);
     env.put("DOTFILES_DIR_PATH", dotfiles_dir_path) catch return false;
 
+    child.cwd_dir = cwd_dir;
     child.env_map = &env;
     child.stdin_behavior = .Inherit;
     child.stdout_behavior = .Inherit;
@@ -148,7 +169,7 @@ fn downloadPackage(package_name: []const u8) !void {
         return error.DownloadFailed;
     };
 
-    if (exit != .Exited or (exit == .Exited and exit.Exited == 0)) {
+    if (exit != .Exited or (exit == .Exited and exit.Exited != 0)) {
         std.log.info("Download Failed", .{});
         return error.DownloadFailed;
     }
