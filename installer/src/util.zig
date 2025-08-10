@@ -1,4 +1,5 @@
 const std = @import("std");
+const log = @import("logger.zig").getGlobalLogger;
 
 pub const INDENT_SPACE_COUNT = 3;
 
@@ -75,19 +76,19 @@ pub fn openFileReadonly(path: []const u8) OpenError!std.fs.File {
         const e = std.fs.File.OpenError;
         switch (err) {
             e.AccessDenied => {
-                std.log.err("Access to file: '{s}' denied", .{path});
+                log().err("Access to file: '{s}' denied", .{path});
                 return OpenError.AccessDenied;
             },
             e.FileNotFound => {
-                std.log.err("File '{s}' not found", .{path});
+                log().err("File '{s}' not found", .{path});
                 return OpenError.NotFound;
             },
             e.IsDir => {
-                std.log.err("Path '{s}' is directory when file was expected", .{path});
+                log().err("Path '{s}' is directory when file was expected", .{path});
                 return OpenError.IsDirectory;
             },
             else => {
-                std.log.err("An unknown error occurred when trying to open file {s}", .{path});
+                log().err("An unknown error occurred when trying to open file {s}", .{path});
                 return OpenError.UnknownError;
             },
         }
@@ -103,19 +104,19 @@ pub fn openFileWrite(path: []const u8) OpenError!std.fs.File {
         const e = std.fs.File.OpenError;
         switch (err) {
             e.AccessDenied => {
-                std.log.err("Access to file: '{s}' denied", .{path});
+                log().err("Access to file: '{s}' denied", .{path});
                 return OpenError.AccessDenied;
             },
             e.FileNotFound => {
-                std.log.err("File '{s}' not found", .{path});
+                log().err("File '{s}' not found", .{path});
                 return OpenError.NotFound;
             },
             e.IsDir => {
-                std.log.err("Path '{s}' is directory when file was expected", .{path});
+                log().err("Path '{s}' is directory when file was expected", .{path});
                 return OpenError.IsDirectory;
             },
             else => {
-                std.log.err("An unknown error occurred when trying to open file {s} (err: {any})", .{ path, err });
+                log().err("An unknown error occurred when trying to open file {s} (err: {any})", .{ path, err });
                 return OpenError.UnknownError;
             },
         }
@@ -138,6 +139,22 @@ pub fn readAllAlloc(file: std.fs.File, alloc: std.mem.Allocator) ![]const u8 {
     _ = try file.readAll(file_content);
 
     return file_content;
+}
+
+pub fn readWholeStreamAlloc(file: std.fs.File, alloc: std.mem.Allocator) ![]const u8 {
+    var reader = file.reader();
+    var buffer = std.ArrayList(u8).init(alloc);
+    defer buffer.deinit();
+
+    var buf: [1024]u8 = undefined;
+
+    while (true) {
+        const read = reader.read(&buf) catch break;
+        if (read == 0) break;
+        try buffer.appendSlice(buf[0..read]);
+    }
+
+    return try buffer.toOwnedSlice();
 }
 
 pub fn runSilentCommand(argv: []const []const u8) !void {

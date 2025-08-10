@@ -2,17 +2,20 @@ const std = @import("std");
 const lxr = @import("lexer.zig");
 const ast = @import("ast.zig");
 const util = @import("util.zig");
+const log = @import("logger.zig").getGlobalLogger;
 
 const BASE_SCRIPTS_DIR_PATH = "./scripts";
 const BASE_DOTFILES_DIR_PATH = "./dotfiles";
 const BASE_PACKAGES_FILE_PATH = "./packages.list";
 const BASE_CACHE_FILE_PATH = "./packages.cache";
+const BASE_LOG_FILE_PATH = "./out.log";
 
 pub const Config = struct {
     scripts_dir_path: []const u8,
     dotfiles_dir_path: []const u8,
     packages_file_path: []const u8,
     cache_file_path: []const u8,
+    log_file_path: []const u8,
 
     const Self = @This();
 
@@ -21,6 +24,7 @@ pub const Config = struct {
         alloc.free(self.dotfiles_dir_path);
         alloc.free(self.packages_file_path);
         alloc.free(self.cache_file_path);
+        alloc.free(self.log_file_path);
     }
 };
 
@@ -33,7 +37,7 @@ const ConfigError = error{
 };
 
 pub fn loadConfig(filename: []const u8, alloc: std.mem.Allocator) !Config {
-    std.log.info("Loading configuration from {s}", .{filename});
+    log().info("Loading configuration from {s}", .{filename});
 
     const file = try util.openFileReadonly(filename);
     defer file.close();
@@ -48,12 +52,12 @@ pub fn loadConfig(filename: []const u8, alloc: std.mem.Allocator) !Config {
     defer ast_tree.deinit();
 
     if (ast_tree.root != .object) {
-        std.log.err("Invalid format of config file", .{});
+        log().err("Invalid format of config file", .{});
     }
 
     const config = try createConfig(ast_tree.root.object, alloc);
 
-    std.log.info("Configuration loaded successfully", .{});
+    log().info("Configuration loaded successfully", .{});
     return config;
 }
 
@@ -64,6 +68,7 @@ fn createConfig(obj: ast.Object, alloc: std.mem.Allocator) (ConfigError || std.m
     var dotfiles_dir: ?[]const u8 = null;
     var packages_file: ?[]const u8 = null;
     var cache_file: ?[]const u8 = null;
+    var log_file: ?[]const u8 = null;
 
     const field_creator = struct {
         pub fn creator(comptime T: type) type {
@@ -94,6 +99,10 @@ fn createConfig(obj: ast.Object, alloc: std.mem.Allocator) (ConfigError || std.m
         .field = &cache_file,
         .default = BASE_CACHE_FILE_PATH,
     });
+    try str_field_map.put("log_file", .{
+        .field = &log_file,
+        .default = BASE_LOG_FILE_PATH,
+    });
 
     while (field_iter.next()) |field| {
         const name = field.key_ptr.*;
@@ -102,7 +111,7 @@ fn createConfig(obj: ast.Object, alloc: std.mem.Allocator) (ConfigError || std.m
         if (str_field_map.get(name)) |config_field_ptr| {
             config_field_ptr.field.* = value.copyString(alloc) catch return ConfigError.FieldHandleFail;
         } else {
-            std.log.err("Unknown field {s} in config", .{name});
+            log().err("Unknown field {s} in config", .{name});
             return ConfigError.InvalidFormat;
         }
     }
@@ -114,7 +123,7 @@ fn createConfig(obj: ast.Object, alloc: std.mem.Allocator) (ConfigError || std.m
         const val_ptr = entry.value_ptr;
 
         if (val_ptr.field.* == null) {
-            std.log.warn("{s} not found in config. Defaulted to value: {s}", .{ key_ptr.*, val_ptr.default });
+            log().warn("{s} not found in config. Defaulted to value: {s}", .{ key_ptr.*, val_ptr.default });
             val_ptr.field.* = try alloc.dupe(u8, val_ptr.default);
         }
     }
@@ -124,6 +133,7 @@ fn createConfig(obj: ast.Object, alloc: std.mem.Allocator) (ConfigError || std.m
         .dotfiles_dir_path = dotfiles_dir.?,
         .packages_file_path = packages_file.?,
         .cache_file_path = cache_file.?,
+        .log_file_path = log_file.?,
     };
 }
 

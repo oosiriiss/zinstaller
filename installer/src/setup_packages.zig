@@ -5,6 +5,7 @@ const PackageStatus = @import("package_status.zig").PackageStatus;
 const PackageContext = @import("load_packages.zig").PackageContext;
 const Config = @import("load_config.zig").Config;
 const util = @import("util.zig");
+const log = @import("logger.zig").getGlobalLogger;
 
 pub fn printSelected(packages: []const PackageDescriptor, alloc: std.mem.Allocator) !void {
     const SETUP_FOUND_STR = "(Setup found)";
@@ -19,7 +20,7 @@ pub fn printSelected(packages: []const PackageDescriptor, alloc: std.mem.Allocat
         try str.appendSlice(line);
         alloc.free(line);
     }
-    std.log.info("These packages will be downloaded: \n{s}", .{str.items});
+    log().info("These packages will be downloaded: \n{s}", .{str.items});
 }
 
 // Allocates memory and merges packages and dependenices into one big slice.
@@ -28,7 +29,7 @@ pub fn printSelected(packages: []const PackageDescriptor, alloc: std.mem.Allocat
 // Original package slice cannot be null
 pub fn finalizePackages(original: []const PackageDescriptor, alloc: std.mem.Allocator) ![]PackageDescriptor {
     if (original.len == 0) {
-        std.log.err("No packages selected.", .{});
+        log().err("No packages selected.", .{});
         return error.NoPackages;
     }
 
@@ -56,7 +57,7 @@ pub fn finalizePackages(original: []const PackageDescriptor, alloc: std.mem.Allo
     return try alloc.dupe(PackageDescriptor, map.keys());
 }
 
-pub fn downloadPackages(packages: []PackageStatus) bool {
+pub fn downloadPackages(packages: []PackageStatus, alloc: std.mem.Allocator) bool {
     // For now only yay supported :)
     assertYayExists() catch return false;
     performYaySync() catch return false;
@@ -65,13 +66,13 @@ pub fn downloadPackages(packages: []PackageStatus) bool {
 
     for (packages) |*package| {
         if (package.status == .download) {
-            downloadPackage(package.package.name) catch {
+            downloadPackage(package.package.name, alloc) catch {
                 all_ok = false;
                 continue;
             };
             package.status = .setup;
         } else {
-            std.log.err("Package \"{s}\" is not set for download - skipping it (Status:{any})", .{ package.package.name, package.status });
+            log().err("Package \"{s}\" is not set for download - skipping it (Status:{any})", .{ package.package.name, package.status });
         }
     }
 
@@ -92,7 +93,7 @@ pub fn setupPackages(packages: []PackageStatus, config: Config, alloc: std.mem.A
             else => "unknown error occurred",
         };
 
-        std.log.info("Scripts working directory path: \"{s}\" {s}", .{ config.scripts_dir_path, reason });
+        log().info("Scripts working directory path: \"{s}\" {s}", .{ config.scripts_dir_path, reason });
 
         return false;
     };
@@ -106,7 +107,7 @@ pub fn setupPackages(packages: []PackageStatus, config: Config, alloc: std.mem.A
                 all_ok = false;
             }
         } else {
-            std.log.err("Package \"{s}\" is not set for setup - skipping it (Status:{s})", .{ p.package.name, p.status.toString() });
+            log().warn("Package \"{s}\" is not set for setup - skipping it (Status:{s})", .{ p.package.name, p.status.toString() });
         }
     }
     return all_ok;
@@ -135,46 +136,61 @@ fn setupPackage(
     child.env_map = &env;
     child.stdin_behavior = .Inherit;
     child.stdout_behavior = .Inherit;
+    child.stderr_behavior = .Inherit;
 
     const term = child.spawnAndWait() catch |err| {
-        std.log.err("Error when running \"{s}\" setup command for package \"{s}\" (error: {any})", .{ package.setup_command.?, package.name, err });
+        log().err("Error when running \"{s}\" setup command for package \"{s}\" (error: {any})", .{ package.setup_command.?, package.name, err });
         return false;
     };
 
     if (term == .Exited and term.Exited == 0)
         return true;
 
-    std.log.err("The setup command \"{s}\" for package \"{s}\" didn't return successfully. (Termination:{any})", .{ package.setup_command.?, package.name, term });
+    log().nextFileOnly();
+    log().err("The setup command \"{s}\" for package \"{s}\" didn't return successfully. (Termination:{any})", .{ package.setup_command.?, package.name, term });
     return false;
 }
 
 fn assertYayExists() !void {
     try util.runCommand(&[_][]const u8{ "yay", "--version" });
-    std.log.info("Yay Found", .{});
+    log().info("Yay Found", .{});
 }
 
 fn performYaySync() !void {
-    std.log.info("Syncing yay", .{});
+    log().info("Syncing yay", .{});
     try util.runSilentCommand(&[_][]const u8{ "yay", "-Sy" });
-    std.log.info("Yay -Sy", .{});
+    log().info("Yay -Sy", .{});
 }
 
-fn downloadPackage(package_name: []const u8) !void {
-    std.log.info("Downloading package: {s}", .{package_name});
+fn downloadPackage(package_name: []const u8, alloc: std.mem.Allocator) !void {
+    log().info("Downloading package: {s}", .{package_name});
 
-    var child = std.process.Child.init(&[_][]const u8{ "yay", "-S", package_name }, std.heap.page_allocator);
+    var child = std.process.Child.init(&[_][]const u8{ "yay", "-S", "--noconfirm", package_name }, std.heap.page_allocator);
+    child.stdout_behavior = .Pipe;
+    child.stderr_behavior = .Pipe;
+    child.stdin_behavior = .Inherit;
 
-    const exit = child.spawnAndWait() catch {
-        std.log.info("Download Failed", .{});
+    child.spawn() catch {
+        log().err("Couldn't spawn download process for package {s}", .{package_name});
         return error.DownloadFailed;
     };
+    const child_stdout = util.readWholeStreamAlloc(child.stdout.?, alloc) catch return error.DownloadFailed;
+    const child_stderr = util.readWholeStreamAlloc(child.stderr.?, alloc) catch return error.DownloadFailed;
+
+    defer alloc.free(child_stdout);
+    defer alloc.free(child_stderr);
+
+    const exit = try child.wait();
 
     if (exit != .Exited or (exit == .Exited and exit.Exited != 0)) {
-        std.log.info("Download Failed", .{});
+        log().nextStdoutOnly();
+        log().err("Download failed of {s}.", .{package_name});
+        log().nextFileOnly();
+        log().err("Download failed of {s}. \nSubprocess stdout is:\n{s}\nSubprocess stderr is:\n{s}", .{ package_name, child_stdout, child_stderr });
         return error.DownloadFailed;
     }
 
-    std.log.info("Download success", .{});
+    log().info("Download success", .{});
 }
 
 test "finalizePackages removes packages with duplicate names on the same level" {

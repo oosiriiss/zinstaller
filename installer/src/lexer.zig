@@ -1,5 +1,6 @@
 const std = @import("std");
 const assert = std.debug.assert;
+const log = @import("logger.zig").getGlobalLogger;
 
 const Keyword = enum {
     if_keyword,
@@ -177,15 +178,15 @@ pub const Lexer = struct {
     // Asserts that the next token is expected symbol. doesn't advance the lexer.
     pub fn assertSymbol(self: *Self, symbol: Symbol) !void {
         const t = self.peek() orelse {
-            std.debug.print("Symbol {any} expected but got null token\n", .{symbol});
+            log().err("Symbol {any} expected but got null token\n", .{symbol});
             return error.SymbolAssertionFailed;
         };
         if (t != .symbol) {
-            std.debug.print("Token {any} isn't a symbol\n", .{t});
+            log().err("Token {any} isn't a symbol\n", .{t});
             return error.SymbolAssertionFailed;
         }
         if (t.symbol != symbol) {
-            std.debug.print("Token {any} isn't expected symbol: {any}\n", .{ t, symbol });
+            log().err("Token {any} isn't expected symbol: {any}\n", .{ t, symbol });
             return error.SymbolAssertionFailed;
         }
     }
@@ -193,15 +194,15 @@ pub const Lexer = struct {
     // Asserts that the next token is expected keyword. doesn't advance the lexer.
     pub fn assertKeyword(self: *Self, keyword: Keyword) !void {
         const t = self.peek() orelse {
-            std.debug.print("Kewyord {any} expected but got null token\n", .{keyword});
+            log().err("Kewyord {any} expected but got null token\n", .{keyword});
             return error.KeywordAssertionFailed;
         };
         if (t != .keyword) {
-            std.debug.print("Token {any} isn't a Keyword\n", .{t});
+            log().err("Token {any} isn't a Keyword\n", .{t});
             return error.KeywordAssertionFailed;
         }
         if (t.keyword != keyword) {
-            std.debug.print("Token {any} isn't expected Keyword: {any}\n", .{ t, keyword });
+            log().err("Token {any} isn't expected Keyword: {any}\n", .{ t, keyword });
             return error.KeywordAssertionFailed;
         }
     }
@@ -209,12 +210,12 @@ pub const Lexer = struct {
     // Asserts that the  next token is an identifier. doesn't advance the lexer.
     pub fn assertIdentifier(self: *Self) !void {
         const t = self.peek() orelse {
-            std.debug.print("Identifier expected but got null\n", .{});
+            log().err("Identifier expected but got null\n", .{});
             return error.IdentifierAssertionFailed;
         };
 
         if (t != .identifier) {
-            std.debug.print("Identifier expected but got {any}\n", .{t});
+            log().err("Identifier expected but got {any}\n", .{t});
             return error.IdentifierAssertionFailed;
         }
     }

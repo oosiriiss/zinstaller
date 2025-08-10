@@ -3,6 +3,7 @@ const PackageDescriptor = @import("load_packages.zig").PackageDescriptor;
 const SetupStatus = @import("package_status.zig").SetupStatus;
 const util = @import("util.zig");
 const cli = @import("cli.zig");
+const log = @import("logger.zig").getGlobalLogger;
 
 const Range = struct {
     start_number: u32,
@@ -61,13 +62,13 @@ fn validateSelectedPackages(tokens: []const InputToken, package_count: usize) !v
             .range => |r| {
                 if (r.start_number > package_count or r.end_number > package_count) {
                     // Writer failing here doesn't matter
-                    std.log.warn("Range {d}-{d} goes over allowed package number equal to {d}", .{ r.start_number, r.end_number, package_count });
+                    log().warn("Range {d}-{d} goes over allowed package number equal to {d}", .{ r.start_number, r.end_number, package_count });
                     failed = true;
                 }
             },
             .number => |v| {
                 if (v > package_count) {
-                    std.log.warn("Package number {d} goes over allowed package number equal to {d}", .{ v, package_count });
+                    log().warn("Package number {d} goes over allowed package number equal to {d}", .{ v, package_count });
                     failed = true;
                 }
             },
@@ -121,14 +122,14 @@ fn askForPackageNumbers() !std.ArrayList(InputToken) {
     var buf: [256]u8 = undefined;
 
     const line_raw = util.readLine(&buf) catch |err| {
-        std.log.err("Couldn't read input", .{});
+        log().err("Couldn't read input", .{});
         return err;
     };
 
     const input = util.clipWhitespace(line_raw);
 
     const tokens = parseSelectionInput(input) catch |err| {
-        std.log.err("There was an error when parsing input (err:{})", .{err});
+        log().err("There was an error when parsing input (err:{})", .{err});
         return err;
     };
 
@@ -149,7 +150,7 @@ fn parseSelectionInput(input: []const u8) (std.mem.Allocator.Error)!std.ArrayLis
 
     while (tokenizer.next()) |token| {
         const parsed = parseToken(token) catch |err| {
-            std.log.err("Couldn't parse \"{s}\" (err: {any}). Skipping it...", .{ token, err });
+            log().err("Couldn't parse \"{s}\" (err: {any}). Skipping it...", .{ token, err });
             continue;
         };
 

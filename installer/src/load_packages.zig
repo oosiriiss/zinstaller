@@ -2,6 +2,7 @@ const std = @import("std");
 const lxr = @import("lexer.zig");
 const ast = @import("ast.zig");
 const util = @import("util.zig");
+const log = @import("logger.zig").getGlobalLogger;
 
 pub const PackageLoadError = error{ FileNotFound, FileAccessDenied, UnkownError };
 
@@ -164,7 +165,7 @@ fn createPackage(val: ast.Value, alloc: std.mem.Allocator) (PackageError || std.
             if (value != .list) return PackageError.InvalidFormat;
             pkg.dependencies = try createPackages(value.list, alloc);
         } else {
-            std.log.err("Unknown package field {s}", .{name});
+            log().err("Unknown package field {s}", .{name});
             return PackageError.InvalidFormat;
         }
     }

@@ -1,6 +1,7 @@
 const std = @import("std");
 const lxr = @import("lexer.zig");
 const util = @import("util.zig");
+const log = @import("logger.zig").getGlobalLogger;
 
 // As of the current state basically just a pack of variables or essentially a named scope
 pub const Object = struct {
@@ -224,7 +225,7 @@ pub const Parser = struct {
         const token = self.lexer.nextToken();
         if (token != null and token.? == .symbol and token.?.symbol == symbol) return;
 
-        std.log.err("Line {d}:{d} (Error:{any})| Expected symbol {s} but got {any}", .{ self.lexer.current_line, self.lexer.current_line_char, self.lexer.getError(), symbol.toString(), token });
+        log().err("Line {d}:{d} (Error:{any})| Expected symbol {s} but got {any}", .{ self.lexer.current_line, self.lexer.current_line_char, self.lexer.getError(), symbol.toString(), token });
         return ParseError.SyntaxError;
     }
 

@@ -11,7 +11,10 @@ const loadCacheEntries = @import("package_status.zig").loadCacheEntries;
 const cleanCache = @import("package_status.zig").cleanCache;
 const downloadPackages = @import("setup_packages.zig").downloadPackages;
 const setupPackages = @import("setup_packages.zig").setupPackages;
-const Logger = @import("logger.zig").Logger;
+// Logger
+const initializeLog = @import("logger.zig").initGlobalLogger;
+const shutdownLog = @import("logger.zig").shutdownGlobalLogger;
+const log = @import("logger.zig").getGlobalLogger;
 
 pub fn main() !void {
     // TODO :: Add some sort of validation if there are two packages with different fields specified in config
@@ -20,21 +23,25 @@ pub fn main() !void {
     // TODO :: add lexer.getError() where lexer is used
     // TODO :: Writer to stdout instead of logging?
     // TODO :: Fix the config load_config default parameter copying - the u8 shit
+    // TODO :: add cli argumenst handling e.g. config_path
     // TODO :: Refactor selectPackagesFromCache and filterSelectedPackages - these do basically the same but with different filter
     // TODO :: Add logging to a file (mainly to ignore pacman stdout output and redirect it to file);
 
     const CONFIG_PATH = "./installer.cfg";
 
-    // const logger = Logger;
+    // The global logger should be only initialized and deinitialized here.
+    initializeLog();
+    defer shutdownLog();
 
     // All allocations done with arena so no real need for memory cleanup
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-
     const alloc = arena.allocator();
 
     var config = try loadConfig(CONFIG_PATH, alloc);
     defer config.deinit(alloc);
+
+    try log().initLogFile(config.log_file_path);
 
     const packages = try loadPackages(config.packages_file_path, alloc);
     defer {
@@ -67,21 +74,21 @@ pub fn main() !void {
 
     const package_statuses = try createPackageStatuses(final_packages, alloc);
 
-    const download_ok = downloadPackages(package_statuses);
+    const download_ok = downloadPackages(package_statuses, alloc);
     try saveCacheEntries(config.cache_file_path, package_statuses);
     if (!download_ok) {
-        std.log.err("Couldn't download all packages", .{});
+        log().err("Couldn't download all packages", .{});
         return;
     }
 
     const setup_ok = setupPackages(package_statuses, config, alloc);
     try saveCacheEntries(config.cache_file_path, package_statuses);
     if (!setup_ok) {
-        std.log.err("Couldn't setup all packages", .{});
+        log().err("Couldn't setup all packages", .{});
         return;
     }
 
-    std.log.info("Everyting went successfully cleaning up", .{});
+    log().info("Everyting went successfully cleaning up", .{});
     try cleanCache(config.cache_file_path);
 }
 

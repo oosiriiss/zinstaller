@@ -5,7 +5,7 @@ const Symbol = @import("lexer.zig").Symbol;
 const ast = @import("ast.zig");
 const util = @import("util.zig");
 const cli = @import("cli.zig");
-const finalizePackages = @import("setup_packages.zig").finalizePackages;
+const log = @import("logger.zig").getGlobalLogger;
 
 pub const SetupStatus = enum {
     // Package is yet to be downloaded
@@ -91,7 +91,7 @@ pub fn mergePackageStatuses(statuses: []PackageStatus, cache_status_map: *const 
 // Doesn't allocate new memory for keys and values. it should be valid as long as the output map is
 fn parseCacheEntries(object: ast.Value, alloc: std.mem.Allocator) !std.StringHashMap(SetupStatus) {
     if (object != .object)
-        std.log.err("Cache file root object has to be an object", .{});
+        log().err("Cache file root object has to be an object", .{});
     var map = std.StringHashMap(SetupStatus).init(alloc);
     errdefer map.deinit();
 
@@ -110,9 +110,9 @@ fn parseCacheEntries(object: ast.Value, alloc: std.mem.Allocator) !std.StringHas
 }
 
 pub fn cleanCache(cache_file_path: []const u8) !void {
-    std.log.info("Deleting cache file: {s}", .{cache_file_path});
+    log().info("Deleting cache file: {s}", .{cache_file_path});
     if (std.fs.cwd().deleteFile(cache_file_path)) {
-        std.log.info("Deleted successfully", .{});
+        log().info("Deleted successfully", .{});
     } else |err| {
         const e = std.fs.Dir.DeleteFileError;
         const err_str = switch (err) {
@@ -121,7 +121,7 @@ pub fn cleanCache(cache_file_path: []const u8) !void {
             e.FileBusy => "File is in use error",
             else => "Unknown error",
         };
-        std.log.info("Couldn't delete file due to {s}. The cache file can be safely removed manually if necessary.", .{err_str});
+        log().err("Couldn't delete file due to {s}. The cache file can be safely removed manually if necessary.", .{err_str});
     }
 }
 
@@ -137,5 +137,4 @@ test "SetupStatus from string" {
     try std.testing.expectEqual(SetupStatus.finished, SetupStatus.fromString("finished"));
 
     try std.testing.expectError(error.InvalidEnumString, SetupStatus.fromString("invalid_enum"));
-
 }
