@@ -98,10 +98,16 @@ pub fn setupPackages(packages: []PackageStatus, config: Config, alloc: std.mem.A
         return false;
     };
 
+    // making the paths relative to the scripts workign directory
+    const relative_dotfiles_path = util.prepareRelativePath(config.scripts_dir_path, config.dotfiles_dir_path, alloc) catch return false;
+    const relative_config_path = util.prepareRelativePath(config.scripts_dir_path, config.config_dir_path, alloc) catch return false;
+    defer alloc.free(relative_dotfiles_path);
+    defer alloc.free(relative_config_path);
+
     var all_ok = true;
     for (packages) |*p| {
         if (p.status == .setup) {
-            if (setupPackage(p.package, config.dotfiles_dir_path, scripts_cwd, alloc)) {
+            if (setupPackage(p.package, relative_dotfiles_path, relative_config_path, scripts_cwd, alloc)) {
                 p.status = SetupStatus.finished;
             } else {
                 all_ok = false;
@@ -115,10 +121,13 @@ pub fn setupPackages(packages: []PackageStatus, config: Config, alloc: std.mem.A
 
 // Assumes the package is at a setup stage and dotfiles_dir_path is a valid directory
 // Each package gets these ENV VARS
+//  Where each ENV var path is relative to the script cwd_dir
 //  - DOTFILES_DIR_PATH - path to dotfiles directory
+//  - CONFIG_DIR_PATH - path to the system .config directory
 fn setupPackage(
     package: *const PackageDescriptor,
     dotfiles_dir_path: []const u8,
+    config_dir_path: []const u8,
     cwd_dir: std.fs.Dir,
     alloc: std.mem.Allocator,
 ) bool {
@@ -131,6 +140,7 @@ fn setupPackage(
     // As for now it overrides the parent envs - dont know if it will be a problem
     var env = std.process.EnvMap.init(alloc);
     env.put("DOTFILES_DIR_PATH", dotfiles_dir_path) catch return false;
+    env.put("CONFIG_DIR_PATH", config_dir_path) catch return false;
 
     child.cwd_dir = cwd_dir;
     child.env_map = &env;

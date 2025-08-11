@@ -6,13 +6,17 @@ const log = @import("logger.zig").getGlobalLogger;
 
 const BASE_SCRIPTS_DIR_PATH = "./scripts";
 const BASE_DOTFILES_DIR_PATH = "./dotfiles";
+const BASE_CONFIG_DIR_PATH = "~/.config";
 const BASE_PACKAGES_FILE_PATH = "./packages.list";
 const BASE_CACHE_FILE_PATH = "./packages.cache";
 const BASE_LOG_FILE_PATH = "./out.log";
 
 pub const Config = struct {
     scripts_dir_path: []const u8,
+    // Path where the dotfiles are
     dotfiles_dir_path: []const u8,
+    // Path to the .config directory
+    config_dir_path: []const u8,
     packages_file_path: []const u8,
     cache_file_path: []const u8,
     log_file_path: []const u8,
@@ -66,6 +70,7 @@ fn createConfig(obj: ast.Object, alloc: std.mem.Allocator) (ConfigError || std.m
 
     var scripts_dir: ?[]const u8 = null;
     var dotfiles_dir: ?[]const u8 = null;
+    var config_dir: ?[]const u8 = null;
     var packages_file: ?[]const u8 = null;
     var cache_file: ?[]const u8 = null;
     var log_file: ?[]const u8 = null;
@@ -103,6 +108,10 @@ fn createConfig(obj: ast.Object, alloc: std.mem.Allocator) (ConfigError || std.m
         .field = &log_file,
         .default = BASE_LOG_FILE_PATH,
     });
+    try str_field_map.put("config_dir", .{
+        .field = &config_dir,
+        .default = BASE_CONFIG_DIR_PATH,
+    });
 
     while (field_iter.next()) |field| {
         const name = field.key_ptr.*;
@@ -134,6 +143,7 @@ fn createConfig(obj: ast.Object, alloc: std.mem.Allocator) (ConfigError || std.m
         .packages_file_path = packages_file.?,
         .cache_file_path = cache_file.?,
         .log_file_path = log_file.?,
+        .config_dir_path = config_dir.?,
     };
 }
 

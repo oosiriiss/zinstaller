@@ -158,6 +158,8 @@ pub const Parser = struct {
         var object = Object{ .name = try self.alloc.dupe(u8, identifier), .fields = std.StringHashMap(Value).init(self.alloc) };
         errdefer object.deinit(self.alloc);
 
+        log().debug("Parsing object: {s}", .{object.name});
+
         while (self.lexer.peek()) |token| {
             if (token == .symbol and token.symbol == .curly_right)
                 break;
@@ -171,21 +173,29 @@ pub const Parser = struct {
 
         try self.expectSymbol(.curly_right);
 
+        log().debug("Object successfully parsed", .{});
+
         return object;
     }
     // Parses just 3 tokenes (NAME, '=', VALUE), doesn't skip the semicolon.
     fn parseAssignment(self: *Self) (ParseError || std.mem.Allocator.Error)!Entry {
+        log().debug("Parsing assigment", .{});
 
         // any identifier is ok
         self.lexer.assertIdentifier() catch return ParseError.AssignmentIdentifierMissing;
 
         const ident_token = self.lexer.nextToken() orelse return ParseError.AssignmentIdentifierMissing;
-
         try self.expectSymbol(.assign);
 
         const ident = try self.alloc.dupe(u8, ident_token.identifier);
+        log().debug("Identifier: {s}", .{ident});
+
         errdefer self.alloc.free(ident);
         const value = try self.parseValue();
+
+        log().debug("Value: {any}", .{value});
+
+        log().debug("Successfully parsed", .{});
 
         return Entry{
             .key = ident,
@@ -206,8 +216,9 @@ pub const Parser = struct {
 
                 if (self.parseObject(ident)) |object| {
                     return Value{ .object = object };
-                } else |_| {
-                    std.debug.panic("Assignment to identifiers not implemented\n", .{});
+                } else |err| {
+                    std.debug.print("Couldnt parse object: {any}\n", .{err});
+                    std.debug.panic("Assignment to identifiers not implemented (encountered indentifier: {s})\n", .{ident});
                 }
             },
             .symbol => |s| {

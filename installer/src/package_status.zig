@@ -46,13 +46,15 @@ pub fn saveCacheEntries(cache_file_path: []const u8, statuses: []const PackageSt
     defer file.close();
     var file_writer = file.writer();
 
-    try file_writer.print("cache {s}\n", .{Symbol.curly_left.toString()});
+    try file_writer.print("[\n", .{});
 
+    // Cache has to be stored as objects to allow package names with '-' sign.
+    // Previous method of storign it as assignemnts caused errors when parsing.
     for (statuses) |status| {
-        try file_writer.print("\t{s} {s} \"{s}\";\n", .{ status.package.name, Symbol.assign.toString(), status.status.toString() });
+        try file_writer.print("\tentry {{ name = \"{s}\"; status = \"{s}\"; }}\n", .{ status.package.name, status.status.toString() });
     }
 
-    try file_writer.print("{s}", .{Symbol.curly_right.toString()});
+    try file_writer.print("]", .{});
 }
 
 // Loads all previous packages statuses from cache file
@@ -88,22 +90,48 @@ pub fn mergePackageStatuses(statuses: []PackageStatus, cache_status_map: *const 
     }
 }
 
-// Doesn't allocate new memory for keys and values. it should be valid as long as the output map is
-fn parseCacheEntries(object: ast.Value, alloc: std.mem.Allocator) !std.StringHashMap(SetupStatus) {
-    if (object != .object)
-        log().err("Cache file root object has to be an object", .{});
+// allocate new memory for keys.
+fn parseCacheEntries(l: ast.Value, alloc: std.mem.Allocator) !std.StringHashMap(SetupStatus) {
+    if (l != .list) {
+        log().err("Cache file root object has to be a list", .{});
+        return error.CacheInvalid;
+    }
     var map = std.StringHashMap(SetupStatus).init(alloc);
     errdefer map.deinit();
 
-    var fields_iter = object.object.fields.iterator();
+    for (l.list) |entry| {
+        if (entry != .object) {
+            log().err("Couldn't read cache. non-object element encountered", .{});
+            return error.CacheInvalid;
+        }
 
-    while (fields_iter.next()) |v| {
-        if (v.value_ptr.* != .string) return error.CacheInvalid;
+        const obj = entry.object;
 
-        const name = try alloc.dupe(u8, v.key_ptr.*);
-        const ev = try SetupStatus.fromString(v.value_ptr.*.string);
+        const package_name = obj.fields.get("name") orelse {
+            log().err("Cache entry is missing 'name' field", .{});
+            return error.CacheInvalid;
+        };
+        const status = obj.fields.get("status") orelse {
+            log().err("Cache entry is missing 'status' field", .{});
+            return error.CacheInvalid;
+        };
 
-        try map.put(name, ev);
+        if (package_name != .string) {
+            log().err("Cache entry's name isn't string.", .{});
+            return error.CacheInvalid;
+        }
+        if (status != .string) {
+            log().err("Cache entry's status isn't string.", .{});
+            return error.CacheInvalid;
+        }
+
+        const name = try alloc.dupe(u8, package_name.string);
+        const status_enum = SetupStatus.fromString(status.string) catch {
+            log().err("Cache entry's status has invalid value.", .{});
+            return error.CacheInvalid;
+        };
+
+        try map.put(name, status_enum);
     }
 
     return map;

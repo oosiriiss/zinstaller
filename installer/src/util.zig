@@ -1,8 +1,6 @@
 const std = @import("std");
 const log = @import("logger.zig").getGlobalLogger;
 
-pub const INDENT_SPACE_COUNT = 3;
-
 pub const IndentPrinter = struct {
     indent: u8,
     writer: std.io.AnyWriter,
@@ -174,4 +172,33 @@ pub fn runCommand(argv: []const []const u8) !void {
     if (exit == .Exited and exit.Exited == 0) return;
 
     return error.ProgramFailed;
+}
+
+// Computes a relative path from "from to "to" and puts it in a new allocated buffer.
+// Also handles HOME directory  by parsing '~'.
+pub fn prepareRelativePath(from: []const u8, to: []const u8, alloc: std.mem.Allocator) ![]const u8 {
+    const expanded_from = try expandTilde(from, alloc);
+    const expanded_to = try expandTilde(to, alloc);
+    defer alloc.free(expanded_from);
+    defer alloc.free(expanded_to);
+
+    return try std.fs.path.relative(alloc, expanded_from, expanded_to);
+}
+
+pub fn expandTilde(path: []const u8, alloc: std.mem.Allocator) ![]const u8 {
+    if (path.len > 0 and path[0] == '~') {
+        const home = std.process.getEnvVarOwned(alloc, "HOME") catch {
+            std.debug.panic("Couldn't access $HOME environment variable", .{});
+            return error.InvalidHome;
+        };
+        defer alloc.free(home);
+
+        var rest = path[1..];
+        if (rest.len > 0 and rest[0] == '/') {
+            rest = rest[1..];
+        }
+
+        return std.fs.path.join(alloc, &[2][]const u8{ home, rest });
+    }
+    return alloc.dupe(u8, path);
 }

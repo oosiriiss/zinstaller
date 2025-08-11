@@ -39,6 +39,7 @@ const Level = enum {
     info,
     warn,
     err,
+    debug,
 };
 
 pub const Logger = struct {
@@ -96,6 +97,13 @@ pub const Logger = struct {
         self.log(.err, fmt, args);
     }
 
+    // Only works in debug builds
+    pub fn debug(self: *Logger, comptime fmt: []const u8, args: anytype) void {
+        if(@import("builtin").mode == .Debug) {
+            self.log(.debug,fmt,args);
+        }
+    }
+
     fn log(self: *Logger, comptime level: Level, comptime fmt: []const u8, args: anytype) void {
         const stdout_fmt = comptime createStdOutFmt(level, fmt);
         const file_fmt = comptime createFileFmt(level, fmt);
@@ -126,6 +134,7 @@ pub const Logger = struct {
             .info => "[" ++ CYAN ++ "INFO" ++ RESET ++ "]: " ++ fmt ++ "\n",
             .warn => "[" ++ YELLOW ++ "WARN" ++ RESET ++ "]: " ++ fmt ++ "\n",
             .err => "[" ++ RED ++ "ERROR" ++ RESET ++ "]: " ++ fmt ++ "\n",
+            .debug => "[" ++ MAGENTA ++ "DEBUG" ++ RESET ++ "]: " ++ fmt ++ "\n",
         };
     }
     fn createFileFmt(comptime level: Level, comptime fmt: []const u8) []const u8 {
@@ -133,6 +142,7 @@ pub const Logger = struct {
             .info => "[INFO]: " ++ fmt ++ "\n",
             .warn => "[WARN]: " ++ fmt ++ "\n",
             .err => "[ERROR]: " ++ fmt ++ "\n",
+            .debug => "[DEBUG]: " ++ fmt ++ "\n",
         };
     }
 };
