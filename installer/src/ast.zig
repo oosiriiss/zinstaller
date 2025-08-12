@@ -275,6 +275,78 @@ pub const Parser = struct {
     }
 };
 
+// copies strings.
+// If a field is missing but it has a default value it will be copied.
+// If all fields of T have default values or are optional no error will be raised if a field is missing from map
+// Otherwise error.MissingField will be returned
+pub fn initObjectFromFields(comptime T: type, map: *const std.StringHashMap(Value), alloc: std.mem.Allocator) (error{MissingField} || std.mem.Allocator.Error)!T {
+    const fields = @typeInfo(T).@"struct".fields;
+
+    const has_default_values = comptime hasDefaultConstructor(T);
+
+    var out: T = if (comptime has_default_values) T{} else undefined;
+
+    inline for (fields) |field| {
+        const field_name = field.name;
+        const field_type = switch (@typeInfo(field.type)) {
+            .optional => |o| o.child,
+            else => field.type,
+        };
+
+        if (map.get(field_name)) |v| {
+            switch (field_type) {
+                []const u8 => {
+                    // TODO :: Field is technically not missing but I do not wanna do this now
+                    @field(out, field_name) = v.copyString(alloc) catch return error.MissingField;
+                },
+                //[]T => { // TODO :: This limits creating packages from string
+                //    if(v != .list) log().err("Invalid field for a list", .{});
+                //    var new = try alloc.alloc(T,v.list.len);
+                //    for(v.list,0..) |item,i| {
+                //        if(item != .object) log().err("Invalid field for a list", .{});
+                //        new[i] = initObjectFromFields(T, item.object, alloc: std.mem.Allocator)
+                //    }
+                //}
+                else => {
+                    log().warn("Field type {any}  for {any} not yet supported - Skipping", .{ field_type, T });
+                },
+            }
+        } else {
+            if (has_default_values) {
+                const fmt = comptime if (field_type == []const u8) "{s}" else "{any}";
+                log().warn("Field {s} not found in the provided fields for {any}. Using default value " ++ fmt, .{ field_name, T, field.defaultValue().? });
+
+                // Default strings are copied
+                if (comptime field_type == []const u8) {
+                    @field(out, field_name) = try alloc.dupe(u8, field.defaultValue().?);
+                }
+            } else if (@typeInfo(field.type) == .optional) { // Optiona lfields do not need a value
+                log().warn("Optional field {s} for {any} is missing - defaulting to null", .{ field_name, T });
+                @field(out, field_name) = null;
+            } else {
+                log().warn("Field {s} not found in the provided field map.", .{field_name});
+                return error.MissingField;
+            }
+        }
+    }
+    return out;
+}
+fn hasDefaultConstructor(comptime T: type) bool {
+    const info = @typeInfo(T);
+    switch (info) {
+        .@"struct" => |structInfo| {
+            // If any field has no default, return false
+            inline for (structInfo.fields) |field| {
+                if (field.defaultValue() == null) {
+                    return false;
+                }
+            }
+
+            return true;
+        },
+        else => return false,
+    }
+}
 test "Parsing string assignment" {
     const content =
         \\ huj = "Hello"; 
@@ -375,4 +447,66 @@ test "Parsing special characters in strings" {
     try std.testing.expectEqual('"', str.string[1]);
     try std.testing.expectEqual('\r', str.string[2]);
     try std.testing.expectEqual(0, str.string[3]);
+}
+
+test "Creating object from fields" {
+    const stype = struct {
+        name: []const u8,
+        description: []const u8,
+    };
+
+    var fields = std.StringHashMap(Value).init(std.testing.allocator);
+    defer fields.deinit();
+
+    try fields.put("name", .{ .string = "Name:)" });
+    try fields.put("description", .{ .string = "Description!" });
+
+    const out = try initObjectFromFields(stype, &fields, std.testing.allocator);
+
+    try std.testing.expectEqualSlices(u8, "Name:)", out.name);
+    try std.testing.expectEqualSlices(u8, "Description!", out.description);
+
+    std.testing.allocator.free(out.name);
+    std.testing.allocator.free(out.description);
+}
+
+test "Creating object with nullable fields" {
+    const stype = struct {
+        description: ?[]const u8,
+        non_present: ?[]const u8,
+    };
+
+    var fields = std.StringHashMap(Value).init(std.testing.allocator);
+    defer fields.deinit();
+
+    try fields.put("description", .{ .string = "Description!" });
+
+    const out = try initObjectFromFields(stype, &fields, std.testing.allocator);
+
+    try std.testing.expectEqualSlices(u8, "Description!", out.description.?);
+    try std.testing.expectEqual(null, out.non_present);
+
+    std.testing.allocator.free(out.description.?);
+}
+
+test "Checking if struct has default consctructor" {
+    const ok_type = struct {
+        name: []const u8 = "ligma",
+    };
+    const ok_type2 = struct {
+        name: []const u8 = "ligma",
+        field: []const u8 = "bols",
+    };
+
+    const not_ok_type = struct {
+        name: []const u8,
+    };
+
+    const t1 = hasDefaultConstructor(ok_type);
+    const t2 = hasDefaultConstructor(ok_type2);
+    const t3 = hasDefaultConstructor(not_ok_type);
+
+    try std.testing.expect(t1 == true);
+    try std.testing.expect(t2 == true);
+    try std.testing.expect(t3 == false);
 }

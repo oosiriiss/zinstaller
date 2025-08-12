@@ -202,3 +202,4 @@ pub fn expandTilde(path: []const u8, alloc: std.mem.Allocator) ![]const u8 {
     }
     return alloc.dupe(u8, path);
 }
+

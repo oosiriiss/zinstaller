@@ -10,29 +10,18 @@ const CYAN = "\x1b[36m";
 const RESET = "\x1b[0m";
 
 // for convenience
-var global_logger: ?Logger = null;
+var global_logger: Logger = Logger.init();
 // Logger must be initialized with initGlobalLogger
 pub fn getGlobalLogger() *Logger {
-    if (global_logger) |*logg| {
-        return logg;
-    } else {
-        std.debug.panic("Trying to access uninitialized global logger\n", .{});
-    }
+    return &global_logger;
 }
 
 pub fn initGlobalLogger() void {
-    if (global_logger != null) std.debug.panic("Reinitializing a global logger\n", .{});
-
     global_logger = Logger.init();
 }
 
 pub fn shutdownGlobalLogger() void {
-    if (global_logger) |*logg| {
-        logg.deinit();
-        global_logger = null;
-    } else {
-        std.debug.panic("Trying to shutdown uninitialized global logger\n", .{});
-    }
+    global_logger.deinit();
 }
 
 const Level = enum {
@@ -99,8 +88,8 @@ pub const Logger = struct {
 
     // Only works in debug builds
     pub fn debug(self: *Logger, comptime fmt: []const u8, args: anytype) void {
-        if(@import("builtin").mode == .Debug) {
-            self.log(.debug,fmt,args);
+        if (@import("builtin").mode == .Debug) {
+            self.log(.debug, fmt, args);
         }
     }
 

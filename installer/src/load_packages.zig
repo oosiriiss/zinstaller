@@ -6,18 +6,12 @@ const log = @import("logger.zig").getGlobalLogger;
 
 pub const PackageLoadError = error{ FileNotFound, FileAccessDenied, UnkownError };
 
-const PACKAGE_OBJECT_NAME = "package";
-const PACKAGE_NAME_FIELD = "name";
-const PACKAGE_DESCRIPTION_FIELD = "description";
-const PACKAGE_DEPENDENCIES_FIELD = "dependencies";
-const PACKAGE_SETUP_COMMAND_FILED = "setup_command";
-
 const PackageError = error{InvalidFormat};
 
 pub const PackageDescriptor = struct {
     name: []const u8,
     description: ?[]const u8,
-    dependencies: ?[]PackageDescriptor,
+    dependencies: ?[]PackageDescriptor = null,
     setup_command: ?[]const u8,
 
     const Self = @This();
@@ -142,35 +136,21 @@ fn createPackageFromString(v: ast.Value, alloc: std.mem.Allocator) (PackageError
 
 fn createPackage(val: ast.Value, alloc: std.mem.Allocator) (PackageError || std.mem.Allocator.Error)!PackageDescriptor {
     if (val != .object) return createPackageFromString(val, alloc);
+    const PACKAGE_OBJECT_NAME = "package";
     if (!std.mem.eql(u8, val.object.name, PACKAGE_OBJECT_NAME)) return PackageError.InvalidFormat;
     const obj = val.object;
 
-    var field_iter = obj.fields.iterator();
+    // // TODO :: This limits creating packages from string
+    // Maybe add some custom context or something
+    // For now just setting the default value of packages to null works
+    var package = ast.initObjectFromFields(PackageDescriptor, &obj.fields, alloc) catch return PackageError.InvalidFormat;
 
-    var pkg = PackageDescriptor{ .name = undefined, .description = null, .dependencies = null, .setup_command = null };
-
-    var str_field_map = std.StringHashMap(*?[]const u8).init(alloc);
-    defer str_field_map.deinit();
-    try str_field_map.put("name", @ptrCast(&pkg.name));
-    try str_field_map.put("description", &pkg.description);
-    try str_field_map.put("setup_command", &pkg.setup_command);
-
-    while (field_iter.next()) |field| {
-        const name = field.key_ptr.*;
-        const value = field.value_ptr.*;
-
-        if (str_field_map.get(name)) |str_field_ptr|
-            str_field_ptr.* = value.copyString(alloc) catch return PackageError.InvalidFormat
-        else if (std.mem.eql(u8, name, "dependencies")) {
-            if (value != .list) return PackageError.InvalidFormat;
-            pkg.dependencies = try createPackages(value.list, alloc);
-        } else {
-            log().err("Unknown package field {s}", .{name});
-            return PackageError.InvalidFormat;
-        }
+    if (obj.fields.get("dependencies")) |deps| {
+        if (deps != .list) log().err("Dependencies must be list", .{});
+        package.dependencies = try createPackages(deps.list, alloc);
     }
 
-    return pkg;
+    return package;
 }
 
 test "Creating package without dependencies from AST" {

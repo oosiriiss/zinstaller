@@ -4,22 +4,22 @@ const ast = @import("ast.zig");
 const util = @import("util.zig");
 const log = @import("logger.zig").getGlobalLogger;
 
-const BASE_SCRIPTS_DIR_PATH = "./scripts";
-const BASE_DOTFILES_DIR_PATH = "./dotfiles";
-const BASE_CONFIG_DIR_PATH = "~/.config";
-const BASE_PACKAGES_FILE_PATH = "./packages.list";
-const BASE_CACHE_FILE_PATH = "./packages.cache";
-const BASE_LOG_FILE_PATH = "./out.log";
+const DEFAULT_SCRIPTS_DIR_PATH = "./scripts";
+const DEFAULT_DOTFILES_DIR_PATH = "./dotfiles";
+const DEFAULT_CONFIG_DIR_PATH = "~/.config";
+const DEFAULT_PACKAGES_FILE_PATH = "./packages.list";
+const DEFAULT_CACHE_FILE_PATH = "./packages.cache";
+const DEFAULT_LOG_FILE_PATH = "./out.log";
 
 pub const Config = struct {
-    scripts_dir_path: []const u8,
+    scripts_dir_path: []const u8 = DEFAULT_SCRIPTS_DIR_PATH,
     // Path where the dotfiles are
-    dotfiles_dir_path: []const u8,
+    dotfiles_dir_path: []const u8 = DEFAULT_DOTFILES_DIR_PATH,
     // Path to the .config directory
-    config_dir_path: []const u8,
-    packages_file_path: []const u8,
-    cache_file_path: []const u8,
-    log_file_path: []const u8,
+    config_dir_path: []const u8 = DEFAULT_CONFIG_DIR_PATH,
+    packages_file_path: []const u8 = DEFAULT_PACKAGES_FILE_PATH,
+    cache_file_path: []const u8 = DEFAULT_CACHE_FILE_PATH,
+    log_file_path: []const u8 = DEFAULT_LOG_FILE_PATH,
 
     const Self = @This();
 
@@ -29,6 +29,7 @@ pub const Config = struct {
         alloc.free(self.packages_file_path);
         alloc.free(self.cache_file_path);
         alloc.free(self.log_file_path);
+        alloc.free(self.config_dir_path);
     }
 };
 
@@ -59,92 +60,20 @@ pub fn loadConfig(filename: []const u8, alloc: std.mem.Allocator) !Config {
         log().err("Invalid format of config file", .{});
     }
 
-    const config = try createConfig(ast_tree.root.object, alloc);
+    var i = ast_tree.root.object.fields.keyIterator();
 
+    while (i.next()) |k| {
+        std.debug.print("Key: {s}\n", .{k.*});
+    }
+
+    const config = try createConfig(ast_tree.root.object, alloc);
     log().info("Configuration loaded successfully", .{});
     return config;
 }
 
-fn createConfig(obj: ast.Object, alloc: std.mem.Allocator) (ConfigError || std.mem.Allocator.Error)!Config {
-    var field_iter = obj.fields.iterator();
-
-    var scripts_dir: ?[]const u8 = null;
-    var dotfiles_dir: ?[]const u8 = null;
-    var config_dir: ?[]const u8 = null;
-    var packages_file: ?[]const u8 = null;
-    var cache_file: ?[]const u8 = null;
-    var log_file: ?[]const u8 = null;
-
-    const field_creator = struct {
-        pub fn creator(comptime T: type) type {
-            return struct {
-                field: *?T,
-                default: T,
-            };
-        }
-    }.creator;
-
-    const StringField = field_creator([]const u8);
-
-    var str_field_map = std.StringHashMap(StringField).init(alloc);
-    defer str_field_map.deinit();
-    try str_field_map.put("scripts_dir", .{
-        .field = &scripts_dir,
-        .default = BASE_SCRIPTS_DIR_PATH,
-    });
-    try str_field_map.put("dotfiles_dir", .{
-        .field = &dotfiles_dir,
-        .default = BASE_DOTFILES_DIR_PATH,
-    });
-    try str_field_map.put("packages_file", .{
-        .field = &packages_file,
-        .default = BASE_PACKAGES_FILE_PATH,
-    });
-    try str_field_map.put("cache_file", .{
-        .field = &cache_file,
-        .default = BASE_CACHE_FILE_PATH,
-    });
-    try str_field_map.put("log_file", .{
-        .field = &log_file,
-        .default = BASE_LOG_FILE_PATH,
-    });
-    try str_field_map.put("config_dir", .{
-        .field = &config_dir,
-        .default = BASE_CONFIG_DIR_PATH,
-    });
-
-    while (field_iter.next()) |field| {
-        const name = field.key_ptr.*;
-        const value = field.value_ptr.*;
-
-        if (str_field_map.get(name)) |config_field_ptr| {
-            config_field_ptr.field.* = value.copyString(alloc) catch return ConfigError.FieldHandleFail;
-        } else {
-            log().err("Unknown field {s} in config", .{name});
-            return ConfigError.InvalidFormat;
-        }
-    }
-
-    var val_iter = str_field_map.iterator();
-
-    while (val_iter.next()) |entry| {
-        const key_ptr = entry.key_ptr;
-        const val_ptr = entry.value_ptr;
-
-        if (val_ptr.field.* == null) {
-            log().warn("{s} not found in config. Defaulted to value: {s}", .{ key_ptr.*, val_ptr.default });
-            val_ptr.field.* = try alloc.dupe(u8, val_ptr.default);
-        }
-    }
-
-    return Config{
-        .scripts_dir_path = scripts_dir.?,
-        .dotfiles_dir_path = dotfiles_dir.?,
-        .packages_file_path = packages_file.?,
-        .cache_file_path = cache_file.?,
-        .log_file_path = log_file.?,
-        .config_dir_path = config_dir.?,
-    };
+pub fn createConfig(obj: ast.Object, alloc: std.mem.Allocator) !Config {
+    // I'll leave this function just in case I wanna add something here.
+    return try ast.initObjectFromFields(Config, &obj.fields, alloc);
 }
 
 test "Loading config from file" {
@@ -154,9 +83,9 @@ test "Loading config from file" {
 
     try file.writer().print(
         \\  config {{
-        \\      scripts_dir = "./scripts";
-        \\      packages_file = "./packages";
-        \\      dotfiles_dir = "./dotfiles";
+        \\      scripts_dir_path = "./scripts";
+        \\      packages_file_path = "./packages";
+        \\      dotfiles_dir_path = "./dotfiles";
         \\  }}
     , .{});
     file.close();
@@ -174,5 +103,5 @@ test "Loading config from file" {
     try std.testing.expectEqualSlices(u8, "./packages", config.packages_file_path);
     try std.testing.expectEqualSlices(u8, "./dotfiles", config.dotfiles_dir_path);
     // field not set defualt value
-    try std.testing.expectEqualSlices(u8, BASE_CACHE_FILE_PATH, config.cache_file_path);
+    try std.testing.expectEqualSlices(u8, DEFAULT_CACHE_FILE_PATH, config.cache_file_path);
 }
