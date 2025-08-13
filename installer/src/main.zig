@@ -26,6 +26,8 @@ pub fn main() !void {
     // TODO :: add cli argumenst handling e.g. config_path
     // TODO :: Refactor selectPackagesFromCache and filterSelectedPackages - these do basically the same but with different filter
     // TODO :: Add logging to a file (mainly to ignore pacman stdout output and redirect it to file);
+    // TODO :: Specyfing bonus env vars in config?
+    // TODO :: Add to config switch that allows terminating scripts whenever any command fails.
     // POSSIBLE_TODO :: Is there really a need to copy the default string values in ast.initObjectFromFields? Possible solution is to introduce getters and make the field nullable and then if it is null just return the default value. but i am not sure if i like this.
 
     const CONFIG_PATH = "./installer.cfg";

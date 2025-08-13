@@ -24,7 +24,29 @@
       name = "git";
       description = "version control system";
       setup_command = "./git.sh"
+   },
+   package {
+      name = "pulseaudio";
+      description = "General purpose sound server, middleware between apps and hardware";
+   },
+   package {
+      // AUR package
+      name = "supergfxctl";
+      description = "GPU Switching on hybrid laptop";
+      setup_command = "sudo systemctl enable supergfxd";
+   },
+   package {
+      // AUR package
+      name = "asusctl";
+      description = "Asus laptop utils, charge limit, power plans, fan speeds etc.";
+      setup_command = "sasusctl --chg-limit 80";
+   },
+   package {
+      name = "sddm";
+      description = "Login manager";
+      setup_command = "./login_manager.sh"
    }
+   
 ]
 
 
