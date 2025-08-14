@@ -72,7 +72,7 @@ pub fn downloadPackages(packages: []PackageStatus, alloc: std.mem.Allocator) boo
             };
             package.status = .setup;
         } else {
-            log().err("Package \"{s}\" is not set for download - skipping it (Status:{any})", .{ package.package.name, package.status });
+            log().info("Package \"{s}\" is not set for download - skipping it (Status:{s})", .{ package.package.name, package.status.toString() });
         }
     }
 

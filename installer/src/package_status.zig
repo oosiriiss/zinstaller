@@ -80,12 +80,15 @@ pub fn loadCacheEntries(cache_file_path: []const u8, alloc: std.mem.Allocator) !
     return try parseCacheEntries(tree.root, alloc);
 }
 
-pub fn mergePackageStatuses(statuses: []PackageStatus, cache_status_map: *const std.StringHashMap(SetupStatus)) !void {
+// Just sets the corresponding package status to its corresponding package (matched by name) in the cache.
+pub fn loadPackageStatusesFromCache(statuses: []PackageStatus, cache_status_map: *const std.StringHashMap(SetupStatus)) void {
     for (statuses) |*s| {
         if (cache_status_map.get(s.package.name)) |cache_status| {
             s.status = cache_status;
         } else {
-            return error.PackageNotFoundInCache;
+            // Cache was modified or corrupted and doesn't accurately reflect the state of the config.
+            log().warn("Cache file doesn't contain {s} package. it's setup state wasn't modified and is: {s}", .{ s.package.name, s.status.toString() });
+            // return error.PackageNotFoundInCache;
         }
     }
 }

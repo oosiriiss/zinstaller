@@ -8,6 +8,7 @@ const finalizePackages = @import("setup_packages.zig").finalizePackages;
 const createPackageStatuses = @import("package_status.zig").createPackageStatusSlice;
 const saveCacheEntries = @import("package_status.zig").saveCacheEntries;
 const loadCacheEntries = @import("package_status.zig").loadCacheEntries;
+const loadPackageStatusesFromCache = @import("package_status.zig").loadPackageStatusesFromCache;
 const cleanCache = @import("package_status.zig").cleanCache;
 const downloadPackages = @import("setup_packages.zig").downloadPackages;
 const setupPackages = @import("setup_packages.zig").setupPackages;
@@ -30,9 +31,9 @@ pub fn main() !void {
     // TODO :: Refactor setup_package to some craeteSetupCommand stuff
     // TODO :: There seems to be some kind of error with cache redownloading packages?
     // TODO :: Add more setup tests
+    // TODO :: Refactor loading cache objects to the new initstruct api
     // POSSIBLE_TODO :: setup commands are sometimes called scripts which may be confusing.
     // POSSIBLE_TODO :: Is there really a need to copy the default string values in ast.initObjectFromFields? Possible solution is to introduce getters and make the field nullable and then if it is null just return the default value. but i am not sure if i like this.
-
     const CONFIG_PATH = "./installer.cfg";
 
     // The logger is initialized automatically.
@@ -79,6 +80,11 @@ pub fn main() !void {
     try printSelected(final_packages, alloc);
 
     const package_statuses = try createPackageStatuses(final_packages, alloc);
+
+    if (cache_entries) |*cache| {
+        log().info("Updating the packages to match statuses in cache.", .{});
+        loadPackageStatusesFromCache(package_statuses, cache);
+    }
 
     const download_ok = downloadPackages(package_statuses, alloc);
     try saveCacheEntries(config.cache_file, package_statuses);
