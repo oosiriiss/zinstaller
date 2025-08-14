@@ -1,7 +1,7 @@
 
 
 NAME="oosiriiss"
-EMAIL="oosiriss@gmail.com"
+EMAIL="oosiriiss@gmail.com"
 EDITOR="nvim"
 
 echo "Settings git user.name to $NAME"
