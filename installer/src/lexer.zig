@@ -2,7 +2,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 const log = @import("logger.zig").getGlobalLogger;
 
-const Keyword = enum {
+pub const Keyword = enum {
     true,
     false,
 };
@@ -119,6 +119,7 @@ pub const Lexer = struct {
             token.debugPrint();
             std.debug.print(" ", .{});
         }
+
         self.index = saved_index;
     }
 
@@ -171,51 +172,6 @@ pub const Lexer = struct {
             },
         };
         return token;
-    }
-
-    // Asserts that the next token is expected symbol. doesn't advance the lexer.
-    pub fn assertSymbol(self: *Self, symbol: Symbol) !void {
-        const t = self.peek() orelse {
-            log().err("Symbol {any} expected but got null token\n", .{symbol});
-            return error.SymbolAssertionFailed;
-        };
-        if (t != .symbol) {
-            log().err("Token {any} isn't a symbol\n", .{t});
-            return error.SymbolAssertionFailed;
-        }
-        if (t.symbol != symbol) {
-            log().err("Token {any} isn't expected symbol: {any}\n", .{ t, symbol });
-            return error.SymbolAssertionFailed;
-        }
-    }
-
-    // Asserts that the next token is expected keyword. doesn't advance the lexer.
-    pub fn assertKeyword(self: *Self, keyword: Keyword) !void {
-        const t = self.peek() orelse {
-            log().err("Kewyord {any} expected but got null token\n", .{keyword});
-            return error.KeywordAssertionFailed;
-        };
-        if (t != .keyword) {
-            log().err("Token {any} isn't a Keyword\n", .{t});
-            return error.KeywordAssertionFailed;
-        }
-        if (t.keyword != keyword) {
-            log().err("Token {any} isn't expected Keyword: {any}\n", .{ t, keyword });
-            return error.KeywordAssertionFailed;
-        }
-    }
-
-    // Asserts that the  next token is an identifier. doesn't advance the lexer.
-    pub fn assertIdentifier(self: *Self) !void {
-        const t = self.peek() orelse {
-            log().err("Identifier expected but got null\n", .{});
-            return error.IdentifierAssertionFailed;
-        };
-
-        if (t != .identifier) {
-            log().err("Identifier expected but got {any}\n", .{t});
-            return error.IdentifierAssertionFailed;
-        }
     }
 
     pub fn peek(self: *Self) ?Token {

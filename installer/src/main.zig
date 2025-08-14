@@ -6,8 +6,8 @@ const loadConfig = @import("load_config.zig").loadConfig;
 const printSelected = @import("setup_packages.zig").printSelected;
 const finalizePackages = @import("setup_packages.zig").finalizePackages;
 const createPackageStatuses = @import("package_status.zig").createPackageStatusSlice;
-const saveCacheEntries = @import("package_status.zig").saveCacheEntries;
-const loadCacheEntries = @import("package_status.zig").loadCacheEntries;
+const saveCache = @import("package_status.zig").saveCache;
+const loadCache = @import("package_status.zig").loadCache;
 const loadPackageStatusesFromCache = @import("package_status.zig").loadPackageStatusesFromCache;
 const cleanCache = @import("package_status.zig").cleanCache;
 const downloadPackages = @import("setup_packages.zig").downloadPackages;
@@ -29,9 +29,9 @@ pub fn main() !void {
     // TODO :: Specyfing bonus env vars in config?
     // TODO :: Generic recursive method for debug print of a struct
     // TODO :: Refactor setup_package to some craeteSetupCommand stuff
-    // TODO :: There seems to be some kind of error with cache redownloading packages?
     // TODO :: Add more setup tests
-    // TODO :: Refactor loading cache objects to the new initstruct api
+    // TODO :: if initObjectFromFields fails midway it may leak memory and refactor it because its getting a little freaky :)
+    // POSSIBLE_TODO :: Switch to excluding packages instead of selecting in package selection?
     // POSSIBLE_TODO :: setup commands are sometimes called scripts which may be confusing.
     // POSSIBLE_TODO :: Is there really a need to copy the default string values in ast.initObjectFromFields? Possible solution is to introduce getters and make the field nullable and then if it is null just return the default value. but i am not sure if i like this.
     const CONFIG_PATH = "./installer.cfg";
@@ -58,19 +58,11 @@ pub fn main() !void {
         alloc.free(packages);
     }
 
-    var cache_entries = try loadCacheEntries(config.cache_file, alloc);
-    defer {
-        if (cache_entries) |*c| {
-            var it = c.iterator();
-            while (it.next()) |e| {
-                alloc.free(e.key_ptr.*);
-            }
-            c.deinit();
-        }
-    }
+    var cache = try loadCache(config.cache_file, alloc);
+    defer if (cache) |*c| c.deinit();
 
-    const selected_packages = if (cache_entries) |*cache|
-        selectPackagesFromCache(packages, cache)
+    const selected_packages = if (cache) |c|
+        selectPackagesFromCache(packages, &c.package_status_map)
     else
         try selectPackages(packages, std.io.getStdOut().writer().any());
 
@@ -81,27 +73,27 @@ pub fn main() !void {
 
     const package_statuses = try createPackageStatuses(final_packages, alloc);
 
-    if (cache_entries) |*cache| {
+    if (cache) |c| {
         log().info("Updating the packages to match statuses in cache.", .{});
-        loadPackageStatusesFromCache(package_statuses, cache);
+        loadPackageStatusesFromCache(package_statuses, &c.package_status_map);
     }
 
     const download_ok = downloadPackages(package_statuses, alloc);
-    try saveCacheEntries(config.cache_file, package_statuses);
+    try saveCache(config.cache_file, package_statuses);
     if (!download_ok) {
         log().err("Couldn't download all packages", .{});
         return;
     }
 
     const setup_ok = setupPackages(package_statuses, config, alloc);
-    try saveCacheEntries(config.cache_file, package_statuses);
+    try saveCache(config.cache_file, package_statuses);
     if (!setup_ok) {
         log().err("Couldn't setup all packages", .{});
         return;
     }
 
     log().info("Everyting went successfully cleaning up", .{});
-    try cleanCache(config.cache_file);
+    _ = try cleanCache(config.cache_file);
 }
 
 test {

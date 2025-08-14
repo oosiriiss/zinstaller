@@ -1,5 +1,7 @@
 const std = @import("std");
 const lxr = @import("lexer.zig");
+const Symbol = lxr.Symbol;
+const Keyword = lxr.Keyword;
 const util = @import("util.zig");
 const log = @import("logger.zig").getGlobalLogger;
 
@@ -165,10 +167,13 @@ pub const Parser = struct {
     fn parseObject(self: *Self, identifier: []const u8) (ParseError || std.mem.Allocator.Error)!Object {
         try self.expectSymbol(.curly_left);
 
-        var object = Object{ .name = try self.alloc.dupe(u8, identifier), .fields = std.StringHashMap(Value).init(self.alloc) };
-        errdefer object.deinit(self.alloc);
+        log().debug("Parsing object: {s}", .{identifier});
 
-        log().debug("Parsing object: {s}", .{object.name});
+        var object = Object{
+            .name = try self.alloc.dupe(u8, identifier),
+            .fields = std.StringHashMap(Value).init(self.alloc),
+        };
+        errdefer object.deinit(self.alloc);
 
         while (self.lexer.peek()) |token| {
             if (token == .symbol and token.symbol == .curly_right)
@@ -192,20 +197,15 @@ pub const Parser = struct {
         log().debug("Parsing assigment", .{});
 
         // any identifier is ok
-        self.lexer.assertIdentifier() catch return ParseError.AssignmentIdentifierMissing;
-
-        const ident_token = self.lexer.nextToken() orelse return ParseError.AssignmentIdentifierMissing;
+        const ident_token = self.expectIdentifier() catch return ParseError.AssignmentIdentifierMissing;
         try self.expectSymbol(.assign);
 
-        const ident = try self.alloc.dupe(u8, ident_token.identifier);
+        const ident = try self.alloc.dupe(u8, ident_token);
         log().debug("Identifier: {s}", .{ident});
-
         errdefer self.alloc.free(ident);
         const value = try self.parseValue();
 
-        log().debug("Value: {any}", .{value});
-
-        log().debug("Successfully parsed", .{});
+        log().debug("Value: {any} Successfully parsed", .{value});
 
         return Entry{
             .key = ident,
@@ -249,11 +249,29 @@ pub const Parser = struct {
             },
         }
     }
-    fn expectSymbol(self: *Self, symbol: lxr.Symbol) ParseError!void {
+    fn expectSymbol(self: *Self, symbol: Symbol) ParseError!void {
         const token = self.lexer.nextToken();
-        if (token != null and token.? == .symbol and token.?.symbol == symbol) return;
+        if (token != null and token.? == .symbol and token.?.symbol == symbol)
+            return;
 
         log().err("Line {d}:{d} (lexer error:{any})| Expected symbol {s} but got {any}", .{ self.lexer.current_line, self.lexer.current_line_char, self.lexer.getError(), symbol.toString(), token });
+        return ParseError.SyntaxError;
+    }
+    fn expectKeyword(self: *Self, keyword: Keyword) ParseError!void {
+        const token = self.lexer.nextToken();
+        if (token != null and token.? == .keyword and token.?.keyword == keyword)
+            return;
+
+        log().err("Line {d}:{d} (lexer error:{any})| Expected keyword {any} but got {any}", .{ self.lexer.current_line, self.lexer.current_line_char, self.lexer.getError(), keyword, token });
+        return ParseError.SyntaxError;
+    }
+
+    fn expectIdentifier(self: *Self) ParseError![]const u8 {
+        const token = self.lexer.nextToken();
+        if (token != null and token.? == .identifier)
+            return token.?.identifier;
+
+        log().err("Line {d}:{d} (lexer error:{any})| Expected identifier but got {any}", .{ self.lexer.current_line, self.lexer.current_line_char, self.lexer.getError(), token });
         return ParseError.SyntaxError;
     }
 
@@ -305,32 +323,50 @@ pub fn initObjectFromFields(comptime T: type, map: *const std.StringHashMap(Valu
 
     inline for (fields) |field| {
         const field_name = field.name;
-        const field_type = switch (@typeInfo(field.type)) {
+        const field_info = @typeInfo(field.type);
+        const field_type = switch (field_info) {
             .optional => |o| o.child,
             else => field.type,
         };
 
         if (map.get(field_name)) |v| {
-            switch (field_type) {
-                []const u8 => {
-                    // TODO :: Field is technically not missing but I do not wanna do this now
-                    @field(out, field_name) = v.copyString(alloc) catch return error.MissingField;
-                },
-                //[]T => { // TODO :: This limits creating packages from string
-                //    if(v != .list) log().err("Invalid field for a list", .{});
-                //    var new = try alloc.alloc(T,v.list.len);
-                //    for(v.list,0..) |item,i| {
-                //        if(item != .object) log().err("Invalid field for a list", .{});
-                //        new[i] = initObjectFromFields(T, item.object, alloc: std.mem.Allocator)
-                //    }
-                //}
-                bool => {
-                    if (v != .bool) return error.InvalidValueType;
-                    @field(out, field_name) = v.bool;
-                },
-                else => {
-                    log().err("Field type {any}  for {any} not yet supported - Skipping", .{ field_type, T });
-                },
+            if (field_info == .@"enum") {
+                if (v != .string) return error.InvalidValueType;
+
+                var ok = false;
+
+                inline for (field_info.@"enum".fields) |f| {
+                    if (std.mem.eql(u8, v.string, f.name)) {
+                        @field(out, field_name) = @enumFromInt(f.value);
+                        ok = true;
+                    }
+                }
+                if (!ok) {
+                    std.debug.panic("Enum str value {s} couldnt be converted to enum of type {any}", .{ v.string, field_type });
+                    return error.InvalidValueType;
+                }
+            } else {
+                switch (field_type) {
+                    []const u8 => {
+                        // TODO :: Field is technically not missing but I do not wanna do this now
+                        @field(out, field_name) = v.copyString(alloc) catch return error.MissingField;
+                    },
+                    //[]T => { // TODO :: This limits creating packages from string
+                    //    if(v != .list) log().err("Invalid field for a list", .{});
+                    //    var new = try alloc.alloc(T,v.list.len);
+                    //    for(v.list,0..) |item,i| {
+                    //        if(item != .object) log().err("Invalid field for a list", .{});
+                    //        new[i] = initObjectFromFields(T, item.object, alloc: std.mem.Allocator)
+                    //    }
+                    //}
+                    bool => {
+                        if (v != .bool) return error.InvalidValueType;
+                        @field(out, field_name) = v.bool;
+                    },
+                    else => {
+                        log().err("Field type {any}  for {any} not yet supported", .{ field_type, T });
+                    },
+                }
             }
         } else {
             if (has_default_values) {
@@ -530,4 +566,29 @@ test "Checking if struct has default consctructor" {
     try std.testing.expect(t1 == true);
     try std.testing.expect(t2 == true);
     try std.testing.expect(t3 == false);
+}
+
+test "Parser expect functions work as expected" {
+    const content =
+        \\ package {};
+        \\ true false {};
+        \\ = [ ; ],
+    ;
+    var lexer = lxr.Lexer.init(content);
+    var parser = Parser.init(&lexer, std.testing.allocator);
+
+    try std.testing.expectEqualSlices(u8, "package", try parser.expectIdentifier());
+    try parser.expectSymbol(.curly_left);
+    try parser.expectSymbol(.curly_right);
+    try parser.expectSymbol(.semicolon);
+    try parser.expectKeyword(.true);
+    try parser.expectKeyword(.false);
+    try parser.expectSymbol(.curly_left);
+    try parser.expectSymbol(.curly_right);
+    try parser.expectSymbol(.semicolon);
+    try parser.expectSymbol(.assign);
+    try parser.expectSymbol(.square_left);
+    try parser.expectSymbol(.semicolon);
+    try parser.expectSymbol(.square_right);
+    try parser.expectSymbol(.comma);
 }

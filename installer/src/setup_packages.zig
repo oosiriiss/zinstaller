@@ -180,6 +180,8 @@ fn setupPackage(
     return false;
 }
 
+
+
 fn createCommandArguments(terminate_on_fail: bool, alloc: std.mem.Allocator) ![]const u8 {
     var buf = std.ArrayList(u8).init(alloc);
     defer buf.deinit();
@@ -233,6 +235,14 @@ fn downloadPackage(package_name: []const u8, alloc: std.mem.Allocator) !void {
 
     log().info("Download success", .{});
 }
+
+/////////////////////////////////////////
+/////////////////////////////////////////
+//////////// Tests ///////////////////////
+/////////////////////////////////////////
+/////////////////////////////////////////
+const testing = std.testing;
+const test_alloc = testing.allocator;
 
 test "finalizePackages removes packages with duplicate names on the same level" {
     const packages = [_]PackageDescriptor{
@@ -352,4 +362,14 @@ test "finalizePackages removes packages with duplicate name on the multiple nest
     try std.testing.expectEqualSlices(u8, "Test4", out[3].name);
     try std.testing.expectEqualSlices(u8, "Test2", out[4].name);
     try std.testing.expectEqualSlices(u8, "Test5", out[5].name);
+}
+
+test "Proper creating bash argument" {
+    const args = try createCommandArguments(true, test_alloc);
+    defer test_alloc.free(args);
+    const args2 = try createCommandArguments(false, test_alloc);
+    defer test_alloc.free(args2);
+
+    try testing.expectEqualSlices(u8, "-ce", args);
+    try testing.expectEqualSlices(u8, "-c", args2);
 }

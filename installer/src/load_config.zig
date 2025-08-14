@@ -97,9 +97,9 @@ test "Loading config from file" {
 
     try file.writer().print(
         \\  config {{
-        \\      scripts_dir_path = "./scripts";
-        \\      packages_file_path = "./packages";
-        \\      dotfiles_dir_path = "./dotfiles";
+        \\      scripts_dir = "./scripts";
+        \\      packages_file = "./packages";
+        \\      dotfiles_dir = "./dotfiles";
         \\  }}
     , .{});
     file.close();
