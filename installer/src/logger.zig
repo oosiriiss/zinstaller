@@ -9,15 +9,13 @@ const MAGENTA = "\x1b[35m";
 const CYAN = "\x1b[36m";
 const RESET = "\x1b[0m";
 
+const writer = if (@import("builtin").is_test) std.io.null_writer.any() else std.io.getStdOut().writer().any();
 // for convenience
-var global_logger: Logger = Logger.init();
+var global_logger: Logger = Logger.init(writer);
+
 // Logger must be initialized with initGlobalLogger
 pub fn getGlobalLogger() *Logger {
     return &global_logger;
-}
-
-pub fn initGlobalLogger() void {
-    global_logger = Logger.init();
 }
 
 pub fn shutdownGlobalLogger() void {
@@ -32,28 +30,30 @@ const Level = enum {
 };
 
 pub const Logger = struct {
-    stdout: std.fs.File.Writer,
+    stdout: std.io.AnyWriter,
     log_file: ?std.fs.File,
     next_file_only: bool,
     next_stdout_only: bool,
 
-    pub fn init() Logger {
+    const Self = @This();
+
+    pub fn init(stdout_writer: std.io.AnyWriter) Self {
         return .{
-            .stdout = std.io.getStdOut().writer(),
+            .stdout = stdout_writer,
             .log_file = null,
             .next_stdout_only = false,
             .next_file_only = false,
         };
     }
 
-    pub fn deinit(self: *Logger) void {
+    pub fn deinit(self: *Self) void {
         if (self.log_file) |file| {
             file.close();
         }
     }
 
     // Make sure to call deinit to close the file handle after.
-    pub fn initLogFile(self: *Logger, log_file_path: []const u8) !void {
+    pub fn initLogFile(self: *Self, log_file_path: []const u8) !void {
         if (self.log_file) |file| {
             file.close();
         }
@@ -65,35 +65,35 @@ pub const Logger = struct {
     }
 
     // Next logging will be only redirected to stdout
-    pub fn nextStdoutOnly(self: *Logger) void {
+    pub fn nextStdoutOnly(self: *Self) void {
         self.next_stdout_only = true;
     }
 
     // Next logging will be only redirected to th elog file if it exists.
-    pub fn nextFileOnly(self: *Logger) void {
+    pub fn nextFileOnly(self: *Self) void {
         self.next_file_only = true;
     }
 
-    pub fn info(self: *Logger, comptime fmt: []const u8, args: anytype) void {
+    pub fn info(self: *Self, comptime fmt: []const u8, args: anytype) void {
         self.log(.info, fmt, args);
     }
 
-    pub fn warn(self: *Logger, comptime fmt: []const u8, args: anytype) void {
+    pub fn warn(self: *Self, comptime fmt: []const u8, args: anytype) void {
         self.log(.warn, fmt, args);
     }
 
-    pub fn err(self: *Logger, comptime fmt: []const u8, args: anytype) void {
+    pub fn err(self: *Self, comptime fmt: []const u8, args: anytype) void {
         self.log(.err, fmt, args);
     }
 
     // Only works in debug builds
-    pub fn debug(self: *Logger, comptime fmt: []const u8, args: anytype) void {
+    pub fn debug(self: *Self, comptime fmt: []const u8, args: anytype) void {
         if (@import("builtin").mode == .Debug) {
             self.log(.debug, fmt, args);
         }
     }
 
-    fn log(self: *Logger, comptime level: Level, comptime fmt: []const u8, args: anytype) void {
+    fn log(self: *Self, comptime level: Level, comptime fmt: []const u8, args: anytype) void {
         const stdout_fmt = comptime createStdOutFmt(level, fmt);
         const file_fmt = comptime createFileFmt(level, fmt);
 
@@ -114,7 +114,7 @@ pub const Logger = struct {
         self.resetExclusiveLog();
     }
 
-    fn resetExclusiveLog(self: *Logger) void {
+    fn resetExclusiveLog(self: *Self) void {
         self.next_file_only = false;
         self.next_stdout_only = false;
     }

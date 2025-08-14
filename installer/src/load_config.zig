@@ -60,12 +60,6 @@ pub fn loadConfig(filename: []const u8, alloc: std.mem.Allocator) !Config {
         log().err("Invalid format of config file", .{});
     }
 
-    var i = ast_tree.root.object.fields.keyIterator();
-
-    while (i.next()) |k| {
-        std.debug.print("Key: {s}\n", .{k.*});
-    }
-
     const config = try createConfig(ast_tree.root.object, alloc);
     log().info("Configuration loaded successfully", .{});
     return config;

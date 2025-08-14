@@ -32,8 +32,8 @@ pub fn main() !void {
 
     const CONFIG_PATH = "./installer.cfg";
 
-    // The global logger should be only initialized and deinitialized here.
-    initializeLog();
+    // The logger is initialized automatically.
+    // shutdown should only will happend here.
     defer shutdownLog();
 
     // All allocations done with arena so no real need for memory cleanup
