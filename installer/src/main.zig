@@ -18,16 +18,19 @@ const log = @import("logger.zig").getGlobalLogger;
 
 pub fn main() !void {
     // TODO :: Add some sort of validation if there are two packages with different fields specified in config
-    // TODO :: Allow aboslute paths in config
+    // TODO :: Allow aboslute paths in config - should i really?
     // TODO :: Check if passing a single slice (with spaces) to util.runCommand creates argv correctly
     // TODO :: add lexer.getError() where lexer is used
     // TODO :: Writer to stdout instead of logging?
     // TODO :: Fix the config load_config default parameter copying - the u8 shit
     // TODO :: add cli argumenst handling e.g. config_path
     // TODO :: Refactor selectPackagesFromCache and filterSelectedPackages - these do basically the same but with different filter
-    // TODO :: Add logging to a file (mainly to ignore pacman stdout output and redirect it to file);
     // TODO :: Specyfing bonus env vars in config?
-    // TODO :: Add to config switch that allows terminating scripts whenever any command fails.
+    // TODO :: Generic recursive method for debug print of a struct
+    // TODO :: Refactor setup_package to some craeteSetupCommand stuff
+    // TODO :: There seems to be some kind of error with cache redownloading packages?
+    // TODO :: Add more setup tests
+    // POSSIBLE_TODO :: setup commands are sometimes called scripts which may be confusing.
     // POSSIBLE_TODO :: Is there really a need to copy the default string values in ast.initObjectFromFields? Possible solution is to introduce getters and make the field nullable and then if it is null just return the default value. but i am not sure if i like this.
 
     const CONFIG_PATH = "./installer.cfg";
@@ -44,9 +47,9 @@ pub fn main() !void {
     var config = try loadConfig(CONFIG_PATH, alloc);
     defer config.deinit(alloc);
 
-    try log().initLogFile(config.log_file_path);
+    try log().initLogFile(config.log_file);
 
-    const packages = try loadPackages(config.packages_file_path, alloc);
+    const packages = try loadPackages(config.packages_file, alloc);
     defer {
         for (packages) |pkg| {
             pkg.deinit(alloc);
@@ -54,7 +57,7 @@ pub fn main() !void {
         alloc.free(packages);
     }
 
-    var cache_entries = try loadCacheEntries(config.cache_file_path, alloc);
+    var cache_entries = try loadCacheEntries(config.cache_file, alloc);
     defer {
         if (cache_entries) |*c| {
             var it = c.iterator();
@@ -78,21 +81,21 @@ pub fn main() !void {
     const package_statuses = try createPackageStatuses(final_packages, alloc);
 
     const download_ok = downloadPackages(package_statuses, alloc);
-    try saveCacheEntries(config.cache_file_path, package_statuses);
+    try saveCacheEntries(config.cache_file, package_statuses);
     if (!download_ok) {
         log().err("Couldn't download all packages", .{});
         return;
     }
 
     const setup_ok = setupPackages(package_statuses, config, alloc);
-    try saveCacheEntries(config.cache_file_path, package_statuses);
+    try saveCacheEntries(config.cache_file, package_statuses);
     if (!setup_ok) {
         log().err("Couldn't setup all packages", .{});
         return;
     }
 
     log().info("Everyting went successfully cleaning up", .{});
-    try cleanCache(config.cache_file_path);
+    try cleanCache(config.cache_file);
 }
 
 test {

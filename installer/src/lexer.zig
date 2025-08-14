@@ -3,15 +3,13 @@ const assert = std.debug.assert;
 const log = @import("logger.zig").getGlobalLogger;
 
 const Keyword = enum {
-    if_keyword,
-    else_keyword,
-    switch_keyword,
+    true,
+    false,
 };
 
 const keyword_map = std.StaticStringMap(Keyword).initComptime([_]struct { []const u8, Keyword }{
-    .{ "if", Keyword.if_keyword },
-    .{ "else", Keyword.else_keyword },
-    .{ "switch", Keyword.switch_keyword },
+    .{ "true", Keyword.true },
+    .{ "false", Keyword.false },
 });
 
 pub const Symbol = enum {
@@ -433,17 +431,15 @@ test "Separating token chains tokens" {
 }
 
 test "Parsing keywords" {
-    const sample_content = "if else switch";
+    const sample_content = "true false";
 
     var lexer = Lexer.init(sample_content);
 
     const t1 = lexer.nextToken().?;
     const t2 = lexer.nextToken().?;
-    const t3 = lexer.nextToken().?;
 
-    try std.testing.expectEqual(Keyword.if_keyword, t1.keyword);
-    try std.testing.expectEqual(Keyword.else_keyword, t2.keyword);
-    try std.testing.expectEqual(Keyword.switch_keyword, t3.keyword);
+    try std.testing.expectEqual(Keyword.true, t1.keyword);
+    try std.testing.expectEqual(Keyword.false, t2.keyword);
 }
 
 test "Unterminated string should set lexer error" {

@@ -34,6 +34,7 @@ pub const Value = union(enum) {
     string: []const u8,
     list: []Value,
     object: Object,
+    bool: bool,
 
     const Self = @This();
 
@@ -47,6 +48,7 @@ pub const Value = union(enum) {
                 l.* = undefined;
             },
             .string => |str| alloc.free(str),
+            .bool => {},
         }
     }
 
@@ -82,6 +84,9 @@ pub const Value = union(enum) {
             .string => |str| {
                 printer.printSilent("\"{s}\"\n", .{str});
             },
+            .bool => |v| {
+                printer.printSilent("{s}", .{if (v == true) "true" else "false"});
+            },
         }
     }
     // asserts that it is instance of a string and returns it's copy.
@@ -111,7 +116,12 @@ const AbstractSyntaxTree = struct {
     }
 };
 
-pub const ParseError = error{ AssignmentIdentifierMissing, AssignmentInvalidValue, AssignmentValueMissing, ObjectDuplicateField, SyntaxError, InvalidValue };
+pub const ParseError = error{
+    AssignmentIdentifierMissing,
+    ObjectDuplicateField,
+    UnexpectedSymbol,
+    SyntaxError,
+};
 pub const Parser = struct {
     lexer: *lxr.Lexer,
     alloc: std.mem.Allocator,
@@ -217,18 +227,25 @@ pub const Parser = struct {
                 if (self.parseObject(ident)) |object| {
                     return Value{ .object = object };
                 } else |err| {
-                    std.debug.print("Couldnt parse object: {any}\n", .{err});
+                    log().err("Couldnt parse object: {any}\n", .{err});
                     std.debug.panic("Assignment to identifiers not implemented (encountered indentifier: {s})\n", .{ident});
                 }
             },
             .symbol => |s| {
                 if (s == .square_left)
                     return Value{ .list = try self.parseArray() };
-                return ParseError.SyntaxError;
+
+                log().err("Unexpected symbol \"{s}\" encountered", .{s.toString()});
+                return ParseError.UnexpectedSymbol;
             },
-            else => {
-                std.debug.print("Invalid value token when parsing: {any}\n", .{value_token});
-                return ParseError.InvalidValue;
+            .keyword => |kw| {
+                self.lexer.skipToken();
+                switch (kw) {
+                    .true, .false => |v| {
+                        log().debug("bool keyword: {any} isTrue: {any}", .{ v, v == .true });
+                        return Value{ .bool = (v == .true) };
+                    },
+                }
             },
         }
     }
@@ -236,7 +253,7 @@ pub const Parser = struct {
         const token = self.lexer.nextToken();
         if (token != null and token.? == .symbol and token.?.symbol == symbol) return;
 
-        log().err("Line {d}:{d} (Error:{any})| Expected symbol {s} but got {any}", .{ self.lexer.current_line, self.lexer.current_line_char, self.lexer.getError(), symbol.toString(), token });
+        log().err("Line {d}:{d} (lexer error:{any})| Expected symbol {s} but got {any}", .{ self.lexer.current_line, self.lexer.current_line_char, self.lexer.getError(), symbol.toString(), token });
         return ParseError.SyntaxError;
     }
 
@@ -279,7 +296,7 @@ pub const Parser = struct {
 // If a field is missing but it has a default value it will be copied.
 // If all fields of T have default values or are optional no error will be raised if a field is missing from map
 // Otherwise error.MissingField will be returned
-pub fn initObjectFromFields(comptime T: type, map: *const std.StringHashMap(Value), alloc: std.mem.Allocator) (error{MissingField} || std.mem.Allocator.Error)!T {
+pub fn initObjectFromFields(comptime T: type, map: *const std.StringHashMap(Value), alloc: std.mem.Allocator) (error{ MissingField, InvalidValueType } || std.mem.Allocator.Error)!T {
     const fields = @typeInfo(T).@"struct".fields;
 
     const has_default_values = comptime hasDefaultConstructor(T);
@@ -307,8 +324,12 @@ pub fn initObjectFromFields(comptime T: type, map: *const std.StringHashMap(Valu
                 //        new[i] = initObjectFromFields(T, item.object, alloc: std.mem.Allocator)
                 //    }
                 //}
+                bool => {
+                    if (v != .bool) return error.InvalidValueType;
+                    @field(out, field_name) = v.bool;
+                },
                 else => {
-                    log().warn("Field type {any}  for {any} not yet supported - Skipping", .{ field_type, T });
+                    log().err("Field type {any}  for {any} not yet supported - Skipping", .{ field_type, T });
                 },
             }
         } else {
@@ -324,7 +345,7 @@ pub fn initObjectFromFields(comptime T: type, map: *const std.StringHashMap(Valu
                 log().warn("Optional field {s} for {any} is missing - defaulting to null", .{ field_name, T });
                 @field(out, field_name) = null;
             } else {
-                log().warn("Field {s} not found in the provided field map.", .{field_name});
+                log().err("Field {s} not found in the provided field map.", .{field_name});
                 return error.MissingField;
             }
         }

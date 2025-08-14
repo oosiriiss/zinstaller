@@ -1,0 +1,29 @@
+
+[
+   package {
+      name = "neovim";
+      description = "Chad editor";
+      // This setup_command should always fail the setup stage
+      setup_command = "./fails_with_set_e.sh";
+      dependencies = [
+	 package {
+	    name = "fd";
+	    description = "\"find\" alternative";
+	    // This setup command should pass the setup stage
+	    setup_command = "./fails_without_set_e.sh";
+	 },
+	 package {
+	    name ="ripgrep";
+	    description = "\"grep\" alternative";
+	 },
+	 package { // This could be transferred to hyprland dependency
+	    name = "wl-clipboard";
+	    description = "wayland clipboard support";
+	 }
+      ];
+   },
+   
+]
+
+
+

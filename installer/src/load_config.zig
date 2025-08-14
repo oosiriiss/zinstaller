@@ -12,24 +12,41 @@ const DEFAULT_CACHE_FILE_PATH = "./packages.cache";
 const DEFAULT_LOG_FILE_PATH = "./out.log";
 
 pub const Config = struct {
-    scripts_dir_path: []const u8 = DEFAULT_SCRIPTS_DIR_PATH,
+    scripts_dir: []const u8 = DEFAULT_SCRIPTS_DIR_PATH,
     // Path where the dotfiles are
-    dotfiles_dir_path: []const u8 = DEFAULT_DOTFILES_DIR_PATH,
+    dotfiles_dir: []const u8 = DEFAULT_DOTFILES_DIR_PATH,
     // Path to the .config directory
-    config_dir_path: []const u8 = DEFAULT_CONFIG_DIR_PATH,
-    packages_file_path: []const u8 = DEFAULT_PACKAGES_FILE_PATH,
-    cache_file_path: []const u8 = DEFAULT_CACHE_FILE_PATH,
-    log_file_path: []const u8 = DEFAULT_LOG_FILE_PATH,
+    config_dir: []const u8 = DEFAULT_CONFIG_DIR_PATH,
+    packages_file: []const u8 = DEFAULT_PACKAGES_FILE_PATH,
+    cache_file: []const u8 = DEFAULT_CACHE_FILE_PATH,
+    log_file: []const u8 = DEFAULT_LOG_FILE_PATH,
+    setup_script_stop_on_fail: bool = false,
 
     const Self = @This();
 
     pub fn deinit(self: Self, alloc: std.mem.Allocator) void {
-        alloc.free(self.scripts_dir_path);
-        alloc.free(self.dotfiles_dir_path);
-        alloc.free(self.packages_file_path);
-        alloc.free(self.cache_file_path);
-        alloc.free(self.log_file_path);
-        alloc.free(self.config_dir_path);
+        alloc.free(self.scripts_dir);
+        alloc.free(self.dotfiles_dir);
+        alloc.free(self.packages_file);
+        alloc.free(self.cache_file);
+        alloc.free(self.log_file);
+        alloc.free(self.config_dir);
+    }
+
+    pub fn debugPrint(self: Self) void {
+        if (comptime @import("builtin").mode == .Debug) {
+            const fields = comptime @typeInfo(Self).@"struct".fields;
+
+            std.debug.print("Config: \n", .{});
+            inline for (fields) |field| {
+                const field_modifier = switch (field.type) {
+                    []const u8 => "s",
+                    else => "any",
+                };
+                const fmt = "   {s} = {" ++ field_modifier ++ "}\n";
+                std.debug.print(fmt, .{ field.name, @field(self, field.name) });
+            }
+        }
     }
 };
 
@@ -62,6 +79,9 @@ pub fn loadConfig(filename: []const u8, alloc: std.mem.Allocator) !Config {
 
     const config = try createConfig(ast_tree.root.object, alloc);
     log().info("Configuration loaded successfully", .{});
+
+    config.debugPrint();
+
     return config;
 }
 
@@ -93,9 +113,9 @@ test "Loading config from file" {
 
     try orig.setAsCwd();
 
-    try std.testing.expectEqualSlices(u8, "./scripts", config.scripts_dir_path);
-    try std.testing.expectEqualSlices(u8, "./packages", config.packages_file_path);
-    try std.testing.expectEqualSlices(u8, "./dotfiles", config.dotfiles_dir_path);
+    try std.testing.expectEqualSlices(u8, "./scripts", config.scripts_dir);
+    try std.testing.expectEqualSlices(u8, "./packages", config.packages_file);
+    try std.testing.expectEqualSlices(u8, "./dotfiles", config.dotfiles_dir);
     // field not set defualt value
-    try std.testing.expectEqualSlices(u8, DEFAULT_CACHE_FILE_PATH, config.cache_file_path);
+    try std.testing.expectEqualSlices(u8, DEFAULT_CACHE_FILE_PATH, config.cache_file);
 }

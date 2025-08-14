@@ -83,9 +83,8 @@ pub fn downloadPackages(packages: []PackageStatus, alloc: std.mem.Allocator) boo
 // if the command fails the package is skipped
 // Assumes config fields are validated.
 pub fn setupPackages(packages: []PackageStatus, config: Config, alloc: std.mem.Allocator) bool {
-    const scripts_cwd = std.fs.cwd().openDir(config.scripts_dir_path, .{}) catch |err| {
+    const scripts_cwd = std.fs.cwd().openDir(config.scripts_dir, .{}) catch |err| {
         const OpenError = std.fs.Dir.OpenError;
-
         const reason = switch (err) {
             OpenError.NotDir => "is not a directory",
             OpenError.FileNotFound => "not found",
@@ -93,21 +92,20 @@ pub fn setupPackages(packages: []PackageStatus, config: Config, alloc: std.mem.A
             else => "unknown error occurred",
         };
 
-        log().info("Scripts working directory path: \"{s}\" {s}", .{ config.scripts_dir_path, reason });
-
+        log().err("Scripts working directory path: \"{s}\" {s}", .{ config.scripts_dir, reason });
         return false;
     };
 
     // making the paths relative to the scripts workign directory
-    const relative_dotfiles_path = util.prepareRelativePath(config.scripts_dir_path, config.dotfiles_dir_path, alloc) catch return false;
-    const relative_config_path = util.prepareRelativePath(config.scripts_dir_path, config.config_dir_path, alloc) catch return false;
+    const relative_dotfiles_path = util.prepareRelativePath(config.scripts_dir, config.dotfiles_dir, alloc) catch return false;
+    const relative_config_path = util.prepareRelativePath(config.scripts_dir, config.config_dir, alloc) catch return false;
     defer alloc.free(relative_dotfiles_path);
     defer alloc.free(relative_config_path);
 
     var all_ok = true;
     for (packages) |*p| {
         if (p.status == .setup) {
-            if (setupPackage(p.package, relative_dotfiles_path, relative_config_path, scripts_cwd, alloc)) {
+            if (setupPackage(p.package, relative_dotfiles_path, relative_config_path, config.setup_script_stop_on_fail, scripts_cwd, alloc)) {
                 p.status = SetupStatus.finished;
             } else {
                 all_ok = false;
@@ -128,13 +126,19 @@ fn setupPackage(
     package: *const PackageDescriptor,
     dotfiles_dir_path: []const u8,
     config_dir_path: []const u8,
+    terminate_on_fail: bool,
     cwd_dir: std.fs.Dir,
     alloc: std.mem.Allocator,
 ) bool {
     // setup command is null so basically setup is finished
     if (package.setup_command == null) return true;
 
-    var child = std.process.Child.init(&.{ "bash", "-c", package.setup_command.? }, alloc);
+    const bash_arguments = createCommandArguments(terminate_on_fail, alloc) catch return false;
+    defer alloc.free(bash_arguments);
+
+    log().debug("Used arguments for bash {s}", .{bash_arguments});
+
+    var child = std.process.Child.init(&.{ "bash", bash_arguments, package.setup_command.? }, alloc);
 
     // Setting up child env
     // As for now it overrides the parent envs - dont know if it will be a problem
@@ -145,13 +149,28 @@ fn setupPackage(
     child.cwd_dir = cwd_dir;
     child.env_map = &env;
     child.stdin_behavior = .Inherit;
-    child.stdout_behavior = .Inherit;
-    child.stderr_behavior = .Inherit;
+    child.stdout_behavior = .Pipe;
+    child.stderr_behavior = .Pipe;
 
-    const term = child.spawnAndWait() catch |err| {
+    child.spawn() catch |err| {
+        log().err("Couldn't spawn setup child process (err:{any})", .{err});
+        return false;
+    };
+
+    const child_stdout = util.readWholeStreamAlloc(child.stdout.?, alloc) catch return false;
+    const child_stderr = util.readWholeStreamAlloc(child.stderr.?, alloc) catch return false;
+    defer alloc.free(child_stdout);
+    defer alloc.free(child_stderr);
+
+    log().info("{s}", .{child_stdout});
+    if (child_stderr.len > 0) log().err("{s}", .{child_stderr});
+
+    const term = child.wait() catch |err| {
         log().err("Error when running \"{s}\" setup command for package \"{s}\" (error: {any})", .{ package.setup_command.?, package.name, err });
         return false;
     };
+
+    log().debug("terminaiton status: {any}", .{term});
 
     if (term == .Exited and term.Exited == 0)
         return true;
@@ -159,6 +178,18 @@ fn setupPackage(
     log().nextFileOnly();
     log().err("The setup command \"{s}\" for package \"{s}\" didn't return successfully. (Termination:{any})", .{ package.setup_command.?, package.name, term });
     return false;
+}
+
+fn createCommandArguments(terminate_on_fail: bool, alloc: std.mem.Allocator) ![]const u8 {
+    var buf = std.ArrayList(u8).init(alloc);
+    defer buf.deinit();
+    try buf.append('-');
+    try buf.append('c');
+    if (terminate_on_fail) {
+        try buf.append('e');
+    }
+
+    return try buf.toOwnedSlice();
 }
 
 fn assertYayExists() !void {
@@ -194,7 +225,7 @@ fn downloadPackage(package_name: []const u8, alloc: std.mem.Allocator) !void {
 
     if (exit != .Exited or (exit == .Exited and exit.Exited != 0)) {
         log().nextStdoutOnly();
-        log().err("Download failed of {s}.", .{package_name});
+        log().err("Download failed of {s}. (check logfile for more)", .{package_name});
         log().nextFileOnly();
         log().err("Download failed of {s}. \nSubprocess stdout is:\n{s}\nSubprocess stderr is:\n{s}", .{ package_name, child_stdout, child_stderr });
         return error.DownloadFailed;
