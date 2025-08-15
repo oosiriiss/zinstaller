@@ -179,9 +179,7 @@ pub const Parser = struct {
             if (token == .symbol and token.symbol == .curly_right)
                 break;
 
-            const entry = try self.parseAssignment();
-
-            try self.expectSymbol(.semicolon);
+            const entry = try self.parseStatement();
 
             object.fields.putNoClobber(entry.key, entry.value) catch return ParseError.ObjectDuplicateField;
         }
@@ -192,8 +190,8 @@ pub const Parser = struct {
 
         return object;
     }
-    // Parses just 3 tokenes (NAME, '=', VALUE), doesn't skip the semicolon.
-    fn parseAssignment(self: *Self) (ParseError || std.mem.Allocator.Error)!Entry {
+    // Parses just 3 tokenes (NAME, '=', VALUE) and expects a symbol ';' or end of line signaling end of statement
+    fn parseStatement(self: *Self) (ParseError || std.mem.Allocator.Error)!Entry {
         log().debug("Parsing assigment", .{});
 
         // any identifier is ok
@@ -207,6 +205,7 @@ pub const Parser = struct {
 
         log().debug("Value: {any} Successfully parsed", .{value});
 
+        try self.expectStatementEnd();
         return Entry{
             .key = ident,
             .value = value,
@@ -254,7 +253,7 @@ pub const Parser = struct {
         if (token != null and token.? == .symbol and token.?.symbol == symbol)
             return;
 
-        log().err("Line {d}:{d} (lexer error:{any})| Expected symbol {s} but got {any}", .{ self.lexer.current_line, self.lexer.current_line_char, self.lexer.getError(), symbol.toString(), token });
+        log().err("Line {d}:{d} (lexer error:{any})| Expected symbol {s} but got {any}", .{ self.lexer.state.current_line, self.lexer.state.current_line_char, self.lexer.getError(), symbol.toString(), token });
         return ParseError.SyntaxError;
     }
     fn expectKeyword(self: *Self, keyword: Keyword) ParseError!void {
@@ -262,7 +261,7 @@ pub const Parser = struct {
         if (token != null and token.? == .keyword and token.?.keyword == keyword)
             return;
 
-        log().err("Line {d}:{d} (lexer error:{any})| Expected keyword {any} but got {any}", .{ self.lexer.current_line, self.lexer.current_line_char, self.lexer.getError(), keyword, token });
+        log().err("Line {d}:{d} (lexer error:{any})| Expected keyword {any} but got {any}", .{ self.lexer.state.current_line, self.lexer.state.current_line_char, self.lexer.getError(), keyword, token });
         return ParseError.SyntaxError;
     }
 
@@ -271,7 +270,26 @@ pub const Parser = struct {
         if (token != null and token.? == .identifier)
             return token.?.identifier;
 
-        log().err("Line {d}:{d} (lexer error:{any})| Expected identifier but got {any}", .{ self.lexer.current_line, self.lexer.current_line_char, self.lexer.getError(), token });
+        log().err("Line {d}:{d} (lexer error:{any})| Expected identifier but got {any}", .{ self.lexer.state.current_line, self.lexer.state.current_line_char, self.lexer.getError(), token });
+        return ParseError.SyntaxError;
+    }
+
+    fn expectStatementEnd(self: *Self) ParseError!void {
+        const token = self.lexer.peek();
+        if (self.lexer.isEndOfLine()) {
+            log().debug("Found statement end of line", .{});
+            return;
+        }
+
+        if (token) |t| {
+            if (t == .symbol and t.symbol == .semicolon) {
+                log().debug("Found statement semicolon", .{});
+                self.lexer.skipToken();
+                return;
+            }
+        }
+
+        log().err("Line {d}:{d} (lexer error:{any})| Expected ';' or newline but got {any}", .{ self.lexer.state.current_line, self.lexer.state.current_line_char, self.lexer.getError(), token });
         return ParseError.SyntaxError;
     }
 
@@ -404,19 +422,29 @@ fn hasDefaultConstructor(comptime T: type) bool {
         else => return false,
     }
 }
+
+////////////////////////////////////////
+////////////////////////////////////////
+/////////////// TESTS //////////////////
+////////////////////////////////////////
+////////////////////////////////////////
+
+const testing = std.testing;
+const test_alloc = testing.allocator;
+
 test "Parsing string assignment" {
     const content =
         \\ huj = "Hello"; 
     ;
 
     var lexer = lxr.Lexer.init(content);
-    var ast = Parser.init(&lexer, std.testing.allocator);
+    var ast = Parser.init(&lexer, testing.allocator);
 
-    var e = try ast.parseAssignment();
+    var e = try ast.parseStatement();
     defer e.deinit(ast.alloc);
 
-    try std.testing.expectEqualSlices(u8, "huj", e.key);
-    try std.testing.expectEqualSlices(u8, "Hello", e.value.string);
+    try testing.expectEqualSlices(u8, "huj", e.key);
+    try testing.expectEqualSlices(u8, "Hello", e.value.string);
 }
 
 test "Parsing empty object assignment" {
@@ -425,14 +453,14 @@ test "Parsing empty object assignment" {
     ;
 
     var lexer = lxr.Lexer.init(content);
-    var ast = Parser.init(&lexer, std.testing.allocator);
+    var ast = Parser.init(&lexer, testing.allocator);
 
-    var e = try ast.parseAssignment();
-    defer e.deinit(std.testing.allocator);
+    var e = try ast.parseStatement();
+    defer e.deinit(testing.allocator);
 
-    try std.testing.expectEqualSlices(u8, "huj", e.key);
-    try std.testing.expect(e.value == .object);
-    try std.testing.expectEqualSlices(u8, "testobject", e.value.object.name);
+    try testing.expectEqualSlices(u8, "huj", e.key);
+    try testing.expect(e.value == .object);
+    try testing.expectEqualSlices(u8, "testobject", e.value.object.name);
 }
 
 test "Parsing object with fields assignment" {
@@ -441,17 +469,17 @@ test "Parsing object with fields assignment" {
     ;
 
     var lexer = lxr.Lexer.init(content);
-    var ast = Parser.init(&lexer, std.testing.allocator);
+    var ast = Parser.init(&lexer, testing.allocator);
 
-    var e = try ast.parseAssignment();
-    defer e.deinit(std.testing.allocator);
+    var e = try ast.parseStatement();
+    defer e.deinit(testing.allocator);
 
-    try std.testing.expectEqualSlices(u8, "huj", e.key);
-    try std.testing.expect(e.value == .object);
-    try std.testing.expectEqualSlices(u8, "testobject", e.value.object.name);
-    try std.testing.expect(e.value.object.fields.count() == 2);
-    try std.testing.expectEqualSlices(u8, "one", e.value.object.fields.get("one").?.string);
-    try std.testing.expectEqualSlices(u8, "two", e.value.object.fields.get("two").?.string);
+    try testing.expectEqualSlices(u8, "huj", e.key);
+    try testing.expect(e.value == .object);
+    try testing.expectEqualSlices(u8, "testobject", e.value.object.name);
+    try testing.expect(e.value.object.fields.count() == 2);
+    try testing.expectEqualSlices(u8, "one", e.value.object.fields.get("one").?.string);
+    try testing.expectEqualSlices(u8, "two", e.value.object.fields.get("two").?.string);
 }
 
 test "Parsing list of strings" {
@@ -460,20 +488,20 @@ test "Parsing list of strings" {
     ;
 
     var lexer = lxr.Lexer.init(content);
-    var ast = Parser.init(&lexer, std.testing.allocator);
+    var ast = Parser.init(&lexer, testing.allocator);
 
     const e = try ast.parseArray();
     defer {
         for (e) |*v| {
-            v.deinit(std.testing.allocator);
+            v.deinit(testing.allocator);
         }
-        std.testing.allocator.free(e);
+        testing.allocator.free(e);
     }
 
-    try std.testing.expectEqual(3, e.len);
-    try std.testing.expectEqualSlices(u8, "first", e[0].string);
-    try std.testing.expectEqualSlices(u8, "second", e[1].string);
-    try std.testing.expectEqualSlices(u8, "third", e[2].string);
+    try testing.expectEqual(3, e.len);
+    try testing.expectEqualSlices(u8, "first", e[0].string);
+    try testing.expectEqualSlices(u8, "second", e[1].string);
+    try testing.expectEqualSlices(u8, "third", e[2].string);
 }
 
 test "Parsing list of strings assignment" {
@@ -482,28 +510,28 @@ test "Parsing list of strings assignment" {
     ;
 
     var lexer = lxr.Lexer.init(content);
-    var ast = Parser.init(&lexer, std.testing.allocator);
+    var ast = Parser.init(&lexer, testing.allocator);
 
-    var e = try ast.parseAssignment();
-    defer e.deinit(std.testing.allocator);
+    var e = try ast.parseStatement();
+    defer e.deinit(testing.allocator);
 
-    try std.testing.expectEqualSlices(u8, "huj", e.key);
-    try std.testing.expect(e.value == .list);
-    try std.testing.expectEqualSlices(u8, "first", e.value.list[0].string);
-    try std.testing.expectEqualSlices(u8, "second", e.value.list[1].string);
-    try std.testing.expectEqualSlices(u8, "third", e.value.list[2].string);
+    try testing.expectEqualSlices(u8, "huj", e.key);
+    try testing.expect(e.value == .list);
+    try testing.expectEqualSlices(u8, "first", e.value.list[0].string);
+    try testing.expectEqualSlices(u8, "second", e.value.list[1].string);
+    try testing.expectEqualSlices(u8, "third", e.value.list[2].string);
 }
 
 test "Parsing special characters in strings" {
     const content = "\\n\\\"\\r\\0";
 
-    var str = try Parser.handleStringLiteral(content, std.testing.allocator);
-    defer str.deinit(std.testing.allocator);
+    var str = try Parser.handleStringLiteral(content, testing.allocator);
+    defer str.deinit(testing.allocator);
 
-    try std.testing.expectEqual('\n', str.string[0]);
-    try std.testing.expectEqual('"', str.string[1]);
-    try std.testing.expectEqual('\r', str.string[2]);
-    try std.testing.expectEqual(0, str.string[3]);
+    try testing.expectEqual('\n', str.string[0]);
+    try testing.expectEqual('"', str.string[1]);
+    try testing.expectEqual('\r', str.string[2]);
+    try testing.expectEqual(0, str.string[3]);
 }
 
 test "Creating object from fields" {
@@ -512,19 +540,19 @@ test "Creating object from fields" {
         description: []const u8,
     };
 
-    var fields = std.StringHashMap(Value).init(std.testing.allocator);
+    var fields = std.StringHashMap(Value).init(testing.allocator);
     defer fields.deinit();
 
     try fields.put("name", .{ .string = "Name:)" });
     try fields.put("description", .{ .string = "Description!" });
 
-    const out = try initObjectFromFields(stype, &fields, std.testing.allocator);
+    const out = try initObjectFromFields(stype, &fields, testing.allocator);
 
-    try std.testing.expectEqualSlices(u8, "Name:)", out.name);
-    try std.testing.expectEqualSlices(u8, "Description!", out.description);
+    try testing.expectEqualSlices(u8, "Name:)", out.name);
+    try testing.expectEqualSlices(u8, "Description!", out.description);
 
-    std.testing.allocator.free(out.name);
-    std.testing.allocator.free(out.description);
+    testing.allocator.free(out.name);
+    testing.allocator.free(out.description);
 }
 
 test "Creating object with nullable fields" {
@@ -533,17 +561,17 @@ test "Creating object with nullable fields" {
         non_present: ?[]const u8,
     };
 
-    var fields = std.StringHashMap(Value).init(std.testing.allocator);
+    var fields = std.StringHashMap(Value).init(testing.allocator);
     defer fields.deinit();
 
     try fields.put("description", .{ .string = "Description!" });
 
-    const out = try initObjectFromFields(stype, &fields, std.testing.allocator);
+    const out = try initObjectFromFields(stype, &fields, testing.allocator);
 
-    try std.testing.expectEqualSlices(u8, "Description!", out.description.?);
-    try std.testing.expectEqual(null, out.non_present);
+    try testing.expectEqualSlices(u8, "Description!", out.description.?);
+    try testing.expectEqual(null, out.non_present);
 
-    std.testing.allocator.free(out.description.?);
+    testing.allocator.free(out.description.?);
 }
 
 test "Checking if struct has default consctructor" {
@@ -563,9 +591,9 @@ test "Checking if struct has default consctructor" {
     const t2 = hasDefaultConstructor(ok_type2);
     const t3 = hasDefaultConstructor(not_ok_type);
 
-    try std.testing.expect(t1 == true);
-    try std.testing.expect(t2 == true);
-    try std.testing.expect(t3 == false);
+    try testing.expect(t1 == true);
+    try testing.expect(t2 == true);
+    try testing.expect(t3 == false);
 }
 
 test "Parser expect functions work as expected" {
@@ -575,9 +603,9 @@ test "Parser expect functions work as expected" {
         \\ = [ ; ],
     ;
     var lexer = lxr.Lexer.init(content);
-    var parser = Parser.init(&lexer, std.testing.allocator);
+    var parser = Parser.init(&lexer, testing.allocator);
 
-    try std.testing.expectEqualSlices(u8, "package", try parser.expectIdentifier());
+    try testing.expectEqualSlices(u8, "package", try parser.expectIdentifier());
     try parser.expectSymbol(.curly_left);
     try parser.expectSymbol(.curly_right);
     try parser.expectSymbol(.semicolon);
@@ -591,4 +619,34 @@ test "Parser expect functions work as expected" {
     try parser.expectSymbol(.semicolon);
     try parser.expectSymbol(.square_right);
     try parser.expectSymbol(.comma);
+}
+
+test "Statement can end with either end of line or ; " {
+    const semicolon_stmt =
+        \\ Something = "string";
+    ;
+    const eof_stmt = "Something = \"string\"";
+    const newline_stmt =
+        \\ Something = "string"
+        \\ "Next token"
+    ;
+
+    var lexer = lxr.Lexer.init(semicolon_stmt);
+    var a = Parser.init(&lexer, test_alloc);
+
+    var e1 = try a.parseStatement();
+    defer e1.deinit(test_alloc);
+    try a.expectStatementEnd();
+
+    lexer = lxr.Lexer.init(eof_stmt);
+    a = Parser.init(&lexer, test_alloc);
+    var e2 = try a.parseStatement();
+    defer e2.deinit(test_alloc);
+    try a.expectStatementEnd();
+
+    lexer = lxr.Lexer.init(newline_stmt);
+    a = Parser.init(&lexer, test_alloc);
+    var e3 = try a.parseStatement();
+    defer e3.deinit(test_alloc);
+    try a.expectStatementEnd();
 }

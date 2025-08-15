@@ -86,13 +86,15 @@ pub fn main() !void {
     }
 
     const setup_ok = setupPackages(package_statuses, config, alloc);
-    try saveCache(config.cache_file, package_statuses);
     if (!setup_ok) {
+        //Only if it failse, because there is no point in saving cache if were gonna delete it on the next line
+        try saveCache(config.cache_file, package_statuses);
+
         log().err("Couldn't setup all packages", .{});
         return;
     }
 
-    log().info("Everyting went successfully cleaning up", .{});
+    log().info("Everyting went successfully, cleaning up", .{});
     _ = try cleanCache(config.cache_file);
 }
 
