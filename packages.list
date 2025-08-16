@@ -1,50 +1,58 @@
 
 [
    package {
-      name = "neovim";
-      description = "Chad editor";
-      setup_command = "./neovim.sh";
+      name = "neovim"
+      description = "Chad editor"
+      setup_command = "./neovim.sh"
       dependencies = [
 	 package {
 	    name = "fd";
-	    description = "\"find\" alternative";
+	    description = "\"find\" alternative"
 	 },
 	 package {
-	    name ="ripgrep";
-	    description = "\"grep\" alternative";
+	    name ="ripgrep"
+	    description = "\"grep\" alternative"
 	 },
 	 package { // This could be transferred to hyprland dependency
-	    name = "wl-clipboard";
-	    description = "wayland clipboard support";
+	    name = "wl-clipboard"
+	    description = "wayland clipboard support"
 	 }
       ];
    },
    package {
       // Git should already be installed on the system but the script sets some config stuff
-      name = "git";
-      description = "version control system";
+      name = "git"
+      description = "version control system"
       setup_command = "./git.sh"
    },
    package {
-      name = "pulseaudio";
-      description = "General purpose sound server, middleware between apps and hardware";
+      name = "pulseaudio"
+      description = "General purpose sound server, middleware between apps and hardware"
    },
    package {
       // AUR package
-      name = "supergfxctl";
-      description = "GPU Switching on hybrid laptop";
-      setup_command = "sudo systemctl enable supergfxd";
+      name = "supergfxctl"
+      description = "GPU Switching on hybrid laptop"
+      setup_command = "sudo systemctl enable supergfxd"
    },
    package {
       // AUR package
-      name = "asusctl";
-      description = "Asus laptop utils, charge limit, power plans, fan speeds etc.";
-      setup_command = "sasusctl --chg-limit 80";
+      name = "asusctl"
+      description = "Asus laptop utils, charge limit, power plans, fan speeds etc."
+      setup_command = "asusctl --chg-limit 80"
    },
    package {
-      name = "sddm";
-      description = "Login manager";
+      name = "sddm"
+      description = "Login manager"
       setup_command = "./login_manager.sh"
+   },
+   package {
+      name = "nvidia-dkms"
+      description = "Dynamic kernel nvidia driver"
+      dependencies = [
+	 // I guess thi sautomatically sets the modeset and fbdev?
+	 "nvidia-utils"
+      ]
    }
    
 ]

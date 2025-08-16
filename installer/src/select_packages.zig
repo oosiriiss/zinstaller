@@ -40,7 +40,8 @@ pub fn selectPackages(packages: []PackageDescriptor, writer: std.io.AnyWriter) !
     }
 
     while (true) {
-        try util.print("Please enter numbers or ranges of desired packages (i.e \"1 2 3 5-8 19 72 420 13\")\n", .{});
+        try util.print("All packages are included by default.", .{});
+        try util.print("Please enter numbers or inclusive ranges of the packages to exclude (i.e \"1 2 3 5-8 19 72 420 78_000 13 \")\n", .{});
         try util.print(">>> ", .{});
 
         const numbers = askForPackageNumbers() catch continue;
@@ -50,7 +51,7 @@ pub fn selectPackages(packages: []PackageDescriptor, writer: std.io.AnyWriter) !
                 continue;
         };
 
-        return filterSelectedPackages(packages, numbers.items);
+        return filterExcludedPackages(packages, numbers.items);
     }
 }
 
@@ -85,7 +86,7 @@ fn validateSelectedPackages(tokens: []const InputToken, package_count: usize) !v
 ///
 /// Returns a slice with selected packages
 ///
-fn filterSelectedPackages(packages: []PackageDescriptor, tokens: []const InputToken) []PackageDescriptor {
+fn filterExcludedPackages(packages: []PackageDescriptor, tokens: []const InputToken) []PackageDescriptor {
     var current_index: usize = 0;
 
     for (0..packages.len) |index| {
@@ -93,7 +94,8 @@ fn filterSelectedPackages(packages: []PackageDescriptor, tokens: []const InputTo
         // packages numbered from 1
         const package_number = index + 1;
 
-        if (isSelected(package_number, tokens)) {
+        // Selected packages are excluded
+        if (!isSelected(package_number, tokens)) {
             std.mem.swap(PackageDescriptor, &packages[current_index], &packages[index]);
             current_index = current_index + 1;
         }
@@ -165,18 +167,10 @@ fn parseSelectionInput(input: []const u8) (std.mem.Allocator.Error)!std.ArrayLis
 /// On success returns a proper token
 /// On failure returns error.UnknownToken
 fn parseToken(strtoken: []const u8) (error{InvalidToken})!InputToken {
-    if (parseNumberToken(strtoken)) |n|
-        return n
-    else |_| {}
-
-    if (parseRangeToken(strtoken)) |r|
-        return r
-    else |_| {}
-
-    return error.InvalidToken;
+    return parseNumberToken(strtoken) catch parseRangeToken(strtoken) catch error.InvalidToken;
 }
 
-fn parseNumberToken(str: []const u8) !InputToken {
+fn parseNumberToken(str: []const u8) std.fmt.ParseIntError!InputToken {
     const number = try std.fmt.parseUnsigned(u32, str, 10);
     return InputToken{ .number = number };
 }
@@ -199,6 +193,15 @@ fn parseRangeToken(str: []const u8) error{InvalidRange}!InputToken {
     return InputToken{ .range = Range{ .start_number = start, .end_number = end } };
 }
 
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+///////////////////  TESTS  //////////////////////
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+
+const testing = std.testing;
+const testalloc = testing.allocator;
+
 test "Filtering packages by package number" {
     const tokens = [_]InputToken{
         InputToken{ .number = 1 },
@@ -216,13 +219,14 @@ test "Filtering packages by package number" {
         PackageDescriptor{ .name = "P7", .description = "D7", .dependencies = null, .setup_command = null },
     };
 
-    const filtered = filterSelectedPackages(&packages, &tokens);
+    const filtered = filterExcludedPackages(&packages, &tokens);
 
-    try std.testing.expectEqual(3, filtered.len);
+    try testing.expectEqual(packages.len - tokens.len, filtered.len);
 
-    try std.testing.expectEqualSlices(u8, filtered[0].name, "P1");
-    try std.testing.expectEqualSlices(u8, filtered[1].name, "P3");
-    try std.testing.expectEqualSlices(u8, filtered[2].name, "P5");
+    try testing.expectEqualSlices(u8, "P2", filtered[0].name);
+    try testing.expectEqualSlices(u8, "P4", filtered[1].name);
+    try testing.expectEqualSlices(u8, "P6", filtered[2].name);
+    try testing.expectEqualSlices(u8, "P7", filtered[3].name);
 }
 
 test "Filtering packages by package range" {
@@ -246,102 +250,107 @@ test "Filtering packages by package range" {
         PackageDescriptor{ .name = "P11", .description = "D11", .dependencies = null, .setup_command = null },
     };
 
-    const filtered = filterSelectedPackages(&packages, &tokens);
+    const filtered = filterExcludedPackages(&packages, &tokens);
 
-    try std.testing.expectEqual(8, filtered.len);
+    try testing.expectEqual(3, filtered.len);
 
-    try std.testing.expectEqualSlices(u8, filtered[0].name, "P1");
-    try std.testing.expectEqualSlices(u8, filtered[1].name, "P2");
-    try std.testing.expectEqualSlices(u8, filtered[2].name, "P5");
-    try std.testing.expectEqualSlices(u8, filtered[3].name, "P6");
-    try std.testing.expectEqualSlices(u8, filtered[4].name, "P7");
-    try std.testing.expectEqualSlices(u8, filtered[5].name, "P8");
-    try std.testing.expectEqualSlices(u8, filtered[6].name, "P10");
-    try std.testing.expectEqualSlices(u8, filtered[7].name, "P11");
+    try testing.expectEqualSlices(u8, "P3", filtered[0].name);
+    try testing.expectEqualSlices(u8, "P4", filtered[1].name);
+    try testing.expectEqualSlices(u8, "P9", filtered[2].name);
 }
 
 test "Selected package with valid number returns true" {
     const tokens = [_]InputToken{InputToken{ .number = 15 }};
     const x = isSelected(15, &tokens);
-    try std.testing.expectEqual(true, x);
+    try testing.expectEqual(true, x);
 }
 
 test "Selected package with invalid number returns false" {
     const tokens = [_]InputToken{InputToken{ .number = 14 }};
     const x = isSelected(15, &tokens);
-    try std.testing.expectEqual(false, x);
+    try testing.expectEqual(false, x);
 }
 
 test "Selected package within specified range return true" {
     const tokens = [_]InputToken{InputToken{ .range = .{ .start_number = 10, .end_number = 20 } }};
     const x = isSelected(15, &tokens);
-    try std.testing.expectEqual(true, x);
+    try testing.expectEqual(true, x);
 }
 
 test "Selected package outside of specified range returns false" {
     const tokens = [_]InputToken{InputToken{ .range = .{ .start_number = 10, .end_number = 20 } }};
     const x = isSelected(9, &tokens);
     const y = isSelected(21, &tokens);
-    try std.testing.expectEqual(false, x);
-    try std.testing.expectEqual(false, y);
+    try testing.expectEqual(false, x);
+    try testing.expectEqual(false, y);
 }
 
 test "Selected package on the edge of range returns true" {
     const tokens = [_]InputToken{InputToken{ .range = .{ .start_number = 10, .end_number = 20 } }};
     const x = isSelected(10, &tokens);
     const y = isSelected(20, &tokens);
-    try std.testing.expectEqual(true, x);
-    try std.testing.expectEqual(true, y);
+    try testing.expectEqual(true, x);
+    try testing.expectEqual(true, y);
+}
+
+test "Parsing number token" {
+    try testing.expectError(std.fmt.ParseIntError.InvalidCharacter, parseNumberToken("194bx"));
+    try testing.expectError(std.fmt.ParseIntError.InvalidCharacter, parseNumberToken("19;4"));
+    try testing.expectError(std.fmt.ParseIntError.InvalidCharacter, parseNumberToken("m10"));
+    try testing.expectError(std.fmt.ParseIntError.InvalidCharacter, parseNumberToken("-10"));
+    try testing.expectEqual(10, (try parseNumberToken("10")).number);
+    try testing.expectEqual(69420, (try parseNumberToken("69420")).number);
+    try testing.expectEqual(69420, (try parseNumberToken("69_420")).number);
 }
 
 test "Parsing valid range" {
     const res = try parseRangeToken("5-12");
-    try std.testing.expect(res.range.start_number == 5 and res.range.end_number == 12);
+    try testing.expect(res.range.start_number == 5 and res.range.end_number == 12);
 
     const res2 = try parseRangeToken("0-15");
-    try std.testing.expect(res2.range.start_number == 0 and res2.range.end_number == 15);
+    try testing.expect(res2.range.start_number == 0 and res2.range.end_number == 15);
 
     const res3 = try parseRangeToken("8-122");
-    try std.testing.expect(res3.range.start_number == 8 and res3.range.end_number == 122);
+    try testing.expect(res3.range.start_number == 8 and res3.range.end_number == 122);
 }
 
 test "range start higher than top should throw" {
     const res = parseRangeToken("12-9");
-    try std.testing.expectError(error.InvalidRange, res);
+    try testing.expectError(error.InvalidRange, res);
 }
 
 test "Too much components of range OR negative numbers in range" {
     const res = parseRangeToken("12-125-99");
-    try std.testing.expectError(error.InvalidRange, res);
+    try testing.expectError(error.InvalidRange, res);
 }
 
 test "Non numerical value in a range" {
     const res = parseRangeToken("15-asdasdeleven");
-    try std.testing.expectError(error.InvalidRange, res);
+    try testing.expectError(error.InvalidRange, res);
 
     const res2 = parseRangeToken("dasda-15");
-    try std.testing.expectError(error.InvalidRange, res2);
+    try testing.expectError(error.InvalidRange, res2);
 
     const res3 = parseRangeToken("asd-asdasdeleven");
-    try std.testing.expectError(error.InvalidRange, res3);
+    try testing.expectError(error.InvalidRange, res3);
 }
 
 test "Not enough components in range" {
     const res = parseRangeToken("-xd");
-    try std.testing.expectError(error.InvalidRange, res);
+    try testing.expectError(error.InvalidRange, res);
 
     const res2 = parseRangeToken("asd-");
-    try std.testing.expectError(error.InvalidRange, res2);
+    try testing.expectError(error.InvalidRange, res2);
 
     const res3 = parseRangeToken("5-");
-    try std.testing.expectError(error.InvalidRange, res3);
+    try testing.expectError(error.InvalidRange, res3);
 
     const res4 = parseRangeToken("-10");
-    try std.testing.expectError(error.InvalidRange, res4);
+    try testing.expectError(error.InvalidRange, res4);
 }
 
 test "Selecting packages from cache" {
-    var cache_map = std.StringHashMap(SetupStatus).init(std.testing.allocator);
+    var cache_map = std.StringHashMap(SetupStatus).init(testing.allocator);
     defer cache_map.deinit();
     try cache_map.put("t1", SetupStatus.download);
     try cache_map.put("t2", SetupStatus.download);
@@ -359,9 +368,9 @@ test "Selecting packages from cache" {
 
     const loaded = selectPackagesFromCache(&packages, &cache_map);
 
-    try std.testing.expectEqual(loaded.len, 4);
-    try std.testing.expectEqualSlices(u8, "t1", loaded[0].name);
-    try std.testing.expectEqualSlices(u8, "t3", loaded[1].name);
-    try std.testing.expectEqualSlices(u8, "t4", loaded[2].name);
-    try std.testing.expectEqualSlices(u8, "t2", loaded[3].name);
+    try testing.expectEqual(loaded.len, 4);
+    try testing.expectEqualSlices(u8, "t1", loaded[0].name);
+    try testing.expectEqualSlices(u8, "t3", loaded[1].name);
+    try testing.expectEqualSlices(u8, "t4", loaded[2].name);
+    try testing.expectEqualSlices(u8, "t2", loaded[3].name);
 }

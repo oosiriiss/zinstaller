@@ -1,5 +1,6 @@
 const std = @import("std");
 const lxr = @import("lexer.zig");
+const Lexer = lxr.Lexer;
 const Symbol = lxr.Symbol;
 const Keyword = lxr.Keyword;
 const util = @import("util.zig");
@@ -117,20 +118,35 @@ const AbstractSyntaxTree = struct {
         self.root.deinit(self.alloc);
     }
 };
+pub const ParseArrayError = error{
+    MissingOpeningBracket,
+    MissingClosingBracket,
+};
+
+pub const ParseObjectError = error{
+    MissingOpeningCurlyBrace,
+    MissingClosingCurlyBrace,
+    ObjectDuplicateField,
+};
+
+pub const ParseStatementError = error{
+    MissingIdentifier,
+    MissingAssignmentOperator,
+    UnterminatedStatement,
+};
 
 pub const ParseError = error{
-    AssignmentIdentifierMissing,
-    ObjectDuplicateField,
     UnexpectedSymbol,
     SyntaxError,
-};
+} || ParseArrayError || ParseObjectError || ParseStatementError;
+
 pub const Parser = struct {
-    lexer: *lxr.Lexer,
+    lexer: *Lexer,
     alloc: std.mem.Allocator,
 
     const Self = @This();
 
-    pub fn init(lexer: *lxr.Lexer, allocator: std.mem.Allocator) Self {
+    pub fn init(lexer: *Lexer, allocator: std.mem.Allocator) Self {
         return .{ .lexer = lexer, .alloc = allocator };
     }
 
@@ -140,7 +156,7 @@ pub const Parser = struct {
 
     //  As of now array of different type values is acceptable
     fn parseArray(self: *Self) (ParseError || std.mem.Allocator.Error)![]Value {
-        try self.expectSymbol(.square_left);
+        self.expectSymbol(.square_left) catch return ParseArrayError.MissingOpeningBracket;
 
         var items = std.ArrayList(Value).init(self.alloc);
         errdefer items.deinit();
@@ -159,13 +175,14 @@ pub const Parser = struct {
 
             try items.append(value);
         }
-        try self.expectSymbol(.square_right);
+
+        self.expectSymbol(.square_right) catch return ParseArrayError.MissingOpeningBracket;
         return try items.toOwnedSlice();
     }
 
     // Copies the identifier into the object name field
     fn parseObject(self: *Self, identifier: []const u8) (ParseError || std.mem.Allocator.Error)!Object {
-        try self.expectSymbol(.curly_left);
+        self.expectSymbol(.curly_left) catch return ParseObjectError.MissingOpeningCurlyBrace;
 
         log().debug("Parsing object: {s}", .{identifier});
 
@@ -173,18 +190,25 @@ pub const Parser = struct {
             .name = try self.alloc.dupe(u8, identifier),
             .fields = std.StringHashMap(Value).init(self.alloc),
         };
-        errdefer object.deinit(self.alloc);
+        errdefer {
+            object.deinit(self.alloc);
+        }
 
         while (self.lexer.peek()) |token| {
             if (token == .symbol and token.symbol == .curly_right)
                 break;
 
-            const entry = try self.parseStatement();
+            var entry = try self.parseStatement();
 
-            object.fields.putNoClobber(entry.key, entry.value) catch return ParseError.ObjectDuplicateField;
+            if (object.fields.contains(entry.key)) {
+                entry.deinit(self.alloc);
+                return ParseError.ObjectDuplicateField;
+            }
+
+            try object.fields.put(entry.key, entry.value);
         }
 
-        try self.expectSymbol(.curly_right);
+        self.expectSymbol(.curly_right) catch return ParseObjectError.MissingClosingCurlyBrace;
 
         log().debug("Object successfully parsed", .{});
 
@@ -195,8 +219,9 @@ pub const Parser = struct {
         log().debug("Parsing assigment", .{});
 
         // any identifier is ok
-        const ident_token = self.expectIdentifier() catch return ParseError.AssignmentIdentifierMissing;
-        try self.expectSymbol(.assign);
+        const ident_token = self.expectIdentifier() catch return ParseStatementError.MissingIdentifier;
+
+        self.expectSymbol(.assign) catch return ParseStatementError.MissingAssignmentOperator;
 
         const ident = try self.alloc.dupe(u8, ident_token);
         log().debug("Identifier: {s}", .{ident});
@@ -205,7 +230,7 @@ pub const Parser = struct {
 
         log().debug("Value: {any} Successfully parsed", .{value});
 
-        try self.expectStatementEnd();
+        self.expectStatementEnd() catch return ParseStatementError.UnterminatedStatement;
         return Entry{
             .key = ident,
             .value = value,
@@ -274,7 +299,7 @@ pub const Parser = struct {
         return ParseError.SyntaxError;
     }
 
-    fn expectStatementEnd(self: *Self) ParseError!void {
+    fn expectStatementEnd(self: *Self) (error{UnterminatedStatement})!void {
         const token = self.lexer.peek();
         if (self.lexer.isEndOfLine()) {
             log().debug("Found statement end of line", .{});
@@ -290,7 +315,7 @@ pub const Parser = struct {
         }
 
         log().err("Line {d}:{d} (lexer error:{any})| Expected ';' or newline but got {any}", .{ self.lexer.state.current_line, self.lexer.state.current_line_char, self.lexer.getError(), token });
-        return ParseError.SyntaxError;
+        return ParseStatementError.UnterminatedStatement;
     }
 
     // handles special characters in strings
@@ -430,15 +455,15 @@ fn hasDefaultConstructor(comptime T: type) bool {
 ////////////////////////////////////////
 
 const testing = std.testing;
-const test_alloc = testing.allocator;
+const testalloc = testing.allocator;
 
 test "Parsing string assignment" {
     const content =
         \\ huj = "Hello"; 
     ;
 
-    var lexer = lxr.Lexer.init(content);
-    var ast = Parser.init(&lexer, testing.allocator);
+    var lexer = Lexer.init(content);
+    var ast = Parser.init(&lexer, testalloc);
 
     var e = try ast.parseStatement();
     defer e.deinit(ast.alloc);
@@ -447,16 +472,73 @@ test "Parsing string assignment" {
     try testing.expectEqualSlices(u8, "Hello", e.value.string);
 }
 
+test "Parsing object" {
+    const ok_content =
+        \\ {
+        \\  field1 = "i"
+        \\  fields2 = "n"
+        \\  f = "x";
+        \\}
+    ;
+    const failing_content =
+        \\ {
+        \\  f = "x";
+        \\  f = "xxxxx";
+        \\}
+    ;
+
+    var lexer = Lexer.init(ok_content);
+    var pars = Parser.init(&lexer, testalloc);
+    var obj = try pars.parseObject("whatever");
+    defer obj.deinit(testalloc);
+
+    try testing.expectEqualSlices(u8, "i", obj.fields.get("field1").?.string);
+    try testing.expectEqualSlices(u8, "n", obj.fields.get("fields2").?.string);
+    try testing.expectEqualSlices(u8, "x", obj.fields.get("f").?.string);
+
+    lexer = Lexer.init(failing_content);
+    pars = Parser.init(&lexer, testalloc);
+
+    try testing.expectError(ParseError.ObjectDuplicateField, pars.parseObject("lolers"));
+}
+
+test "Value deinit doesn't leak memory" {
+    var str = Value{ .string = try testalloc.dupe(u8, "Hello") };
+    var list = Value{ .list = try testalloc.dupe(
+        Value,
+        &[_]Value{
+            Value{ .bool = false },
+            Value{ .bool = true },
+            Value{ .string = try testalloc.dupe(u8, "Nested str") },
+        },
+    ) };
+    var fields = std.StringHashMap(Value).init(testalloc);
+    try fields.put(try testalloc.dupe(u8, "field1"), Value{ .bool = false });
+    try fields.put(try testalloc.dupe(u8, "field2"), Value{ .string = try testalloc.dupe(u8, "value") });
+    try fields.put(try testalloc.dupe(u8, "field3"), Value{ .list = try testalloc.dupe(
+        Value,
+        &[_]Value{
+            Value{ .bool = false },
+            Value{ .string = try testalloc.dupe(u8, "object item") },
+        },
+    ) });
+    var obj = Value{ .object = .{ .name = try testalloc.dupe(u8, "Object name"), .fields = fields } };
+
+    str.deinit(testalloc);
+    list.deinit(testalloc);
+    obj.deinit(testalloc);
+}
+
 test "Parsing empty object assignment" {
     const content =
         \\ huj = testobject {};
     ;
 
-    var lexer = lxr.Lexer.init(content);
-    var ast = Parser.init(&lexer, testing.allocator);
+    var lexer = Lexer.init(content);
+    var ast = Parser.init(&lexer, testalloc);
 
     var e = try ast.parseStatement();
-    defer e.deinit(testing.allocator);
+    defer e.deinit(testalloc);
 
     try testing.expectEqualSlices(u8, "huj", e.key);
     try testing.expect(e.value == .object);
@@ -468,11 +550,11 @@ test "Parsing object with fields assignment" {
         \\ huj = testobject { one = "one"; two = "two";};
     ;
 
-    var lexer = lxr.Lexer.init(content);
-    var ast = Parser.init(&lexer, testing.allocator);
+    var lexer = Lexer.init(content);
+    var ast = Parser.init(&lexer, testalloc);
 
     var e = try ast.parseStatement();
-    defer e.deinit(testing.allocator);
+    defer e.deinit(testalloc);
 
     try testing.expectEqualSlices(u8, "huj", e.key);
     try testing.expect(e.value == .object);
@@ -487,15 +569,15 @@ test "Parsing list of strings" {
         \\ [ "first","second","third" ];
     ;
 
-    var lexer = lxr.Lexer.init(content);
-    var ast = Parser.init(&lexer, testing.allocator);
+    var lexer = Lexer.init(content);
+    var ast = Parser.init(&lexer, testalloc);
 
     const e = try ast.parseArray();
     defer {
         for (e) |*v| {
-            v.deinit(testing.allocator);
+            v.deinit(testalloc);
         }
-        testing.allocator.free(e);
+        testalloc.free(e);
     }
 
     try testing.expectEqual(3, e.len);
@@ -509,11 +591,11 @@ test "Parsing list of strings assignment" {
         \\ huj = [ "first","second","third" ];
     ;
 
-    var lexer = lxr.Lexer.init(content);
-    var ast = Parser.init(&lexer, testing.allocator);
+    var lexer = Lexer.init(content);
+    var ast = Parser.init(&lexer, testalloc);
 
     var e = try ast.parseStatement();
-    defer e.deinit(testing.allocator);
+    defer e.deinit(testalloc);
 
     try testing.expectEqualSlices(u8, "huj", e.key);
     try testing.expect(e.value == .list);
@@ -525,8 +607,8 @@ test "Parsing list of strings assignment" {
 test "Parsing special characters in strings" {
     const content = "\\n\\\"\\r\\0";
 
-    var str = try Parser.handleStringLiteral(content, testing.allocator);
-    defer str.deinit(testing.allocator);
+    var str = try Parser.handleStringLiteral(content, testalloc);
+    defer str.deinit(testalloc);
 
     try testing.expectEqual('\n', str.string[0]);
     try testing.expectEqual('"', str.string[1]);
@@ -540,19 +622,19 @@ test "Creating object from fields" {
         description: []const u8,
     };
 
-    var fields = std.StringHashMap(Value).init(testing.allocator);
+    var fields = std.StringHashMap(Value).init(testalloc);
     defer fields.deinit();
 
     try fields.put("name", .{ .string = "Name:)" });
     try fields.put("description", .{ .string = "Description!" });
 
-    const out = try initObjectFromFields(stype, &fields, testing.allocator);
+    const out = try initObjectFromFields(stype, &fields, testalloc);
 
     try testing.expectEqualSlices(u8, "Name:)", out.name);
     try testing.expectEqualSlices(u8, "Description!", out.description);
 
-    testing.allocator.free(out.name);
-    testing.allocator.free(out.description);
+    testalloc.free(out.name);
+    testalloc.free(out.description);
 }
 
 test "Creating object with nullable fields" {
@@ -561,17 +643,17 @@ test "Creating object with nullable fields" {
         non_present: ?[]const u8,
     };
 
-    var fields = std.StringHashMap(Value).init(testing.allocator);
+    var fields = std.StringHashMap(Value).init(testalloc);
     defer fields.deinit();
 
     try fields.put("description", .{ .string = "Description!" });
 
-    const out = try initObjectFromFields(stype, &fields, testing.allocator);
+    const out = try initObjectFromFields(stype, &fields, testalloc);
 
     try testing.expectEqualSlices(u8, "Description!", out.description.?);
     try testing.expectEqual(null, out.non_present);
 
-    testing.allocator.free(out.description.?);
+    testalloc.free(out.description.?);
 }
 
 test "Checking if struct has default consctructor" {
@@ -602,8 +684,8 @@ test "Parser expect functions work as expected" {
         \\ true false {};
         \\ = [ ; ],
     ;
-    var lexer = lxr.Lexer.init(content);
-    var parser = Parser.init(&lexer, testing.allocator);
+    var lexer = Lexer.init(content);
+    var parser = Parser.init(&lexer, testalloc);
 
     try testing.expectEqualSlices(u8, "package", try parser.expectIdentifier());
     try parser.expectSymbol(.curly_left);
@@ -631,22 +713,22 @@ test "Statement can end with either end of line or ; " {
         \\ "Next token"
     ;
 
-    var lexer = lxr.Lexer.init(semicolon_stmt);
-    var a = Parser.init(&lexer, test_alloc);
+    var lexer = Lexer.init(semicolon_stmt);
+    var a = Parser.init(&lexer, testalloc);
 
     var e1 = try a.parseStatement();
-    defer e1.deinit(test_alloc);
+    defer e1.deinit(testalloc);
     try a.expectStatementEnd();
 
-    lexer = lxr.Lexer.init(eof_stmt);
-    a = Parser.init(&lexer, test_alloc);
+    lexer = Lexer.init(eof_stmt);
+    a = Parser.init(&lexer, testalloc);
     var e2 = try a.parseStatement();
-    defer e2.deinit(test_alloc);
+    defer e2.deinit(testalloc);
     try a.expectStatementEnd();
 
-    lexer = lxr.Lexer.init(newline_stmt);
-    a = Parser.init(&lexer, test_alloc);
+    lexer = Lexer.init(newline_stmt);
+    a = Parser.init(&lexer, testalloc);
     var e3 = try a.parseStatement();
-    defer e3.deinit(test_alloc);
+    defer e3.deinit(testalloc);
     try a.expectStatementEnd();
 }

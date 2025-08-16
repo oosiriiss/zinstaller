@@ -31,8 +31,8 @@ pub fn main() !void {
     // TODO :: Refactor setup_package to some craeteSetupCommand stuff
     // TODO :: Add more setup tests
     // TODO :: if initObjectFromFields fails midway it may leak memory and refactor it because its getting a little freaky :)
-    // POSSIBLE_TODO :: Switch to excluding packages instead of selecting in package selection?
     // POSSIBLE_TODO :: setup commands are sometimes called scripts which may be confusing.
+    // TODO :: I mean i cna switch to c_allocator instead o fstd.heap.page_allocator but i am having severe skill issue linking libc
     // POSSIBLE_TODO :: Is there really a need to copy the default string values in ast.initObjectFromFields? Possible solution is to introduce getters and make the field nullable and then if it is null just return the default value. but i am not sure if i like this.
     const CONFIG_PATH = "./installer.cfg";
 
