@@ -33,6 +33,9 @@ pub fn main() !void {
     // TODO :: if initObjectFromFields fails midway it may leak memory and refactor it because its getting a little freaky :)
     // POSSIBLE_TODO :: setup commands are sometimes called scripts which may be confusing.
     // TODO :: I mean i cna switch to c_allocator instead o fstd.heap.page_allocator but i am having severe skill issue linking libc
+    // Maybe add some on startup script and on finished script for things like regenerate grub config etc.
+    // TODO :: 
+    // add section in packages list for packages that will be included in download/setup no matter what and for optional (normal) packages
     // POSSIBLE_TODO :: Is there really a need to copy the default string values in ast.initObjectFromFields? Possible solution is to introduce getters and make the field nullable and then if it is null just return the default value. but i am not sure if i like this.
     const CONFIG_PATH = "./installer.cfg";
 

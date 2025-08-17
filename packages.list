@@ -1,6 +1,56 @@
 
 [
    package {
+      name = "hyprland"
+      description = "hyprland yeah";
+      setup_command = "./wayland.sh"
+      dependencies = [
+	 "egl-wayland",
+	 "wlr-randr",
+	 # Qt isnt technically ad ependency 
+	 "qt5-wayland",
+	 "qt6-wayland",
+      ]
+   },
+   package {
+      name = "hyprpaper"
+      description = "wallpaper with hyprland";
+
+   },
+   package {
+      name = "zsh";
+      description = "shell"
+      setup_command = "./zsh.sh"
+      dependencies = [
+	 "zsh-completions"
+      ]
+   },
+   package {
+      name = "waybar"
+      description = "top bar"
+   },
+   //package {
+   //   name = "rofi-lbonn-wayland-git"
+   //   description = "rofi for wayland? but id if maybe there are some better ports"
+   //},
+   package {
+      name = "swaync"
+      description = "notification daemon"
+   },
+   package {
+      name = "nautilus"
+      description = "file manager (picker?)"
+   },	
+   package {
+      name = "sddm"
+      description = "Login manager"
+      setup_command = "./login_manager.sh"
+   },
+   package {
+      name="alacritty"
+      description = "terminal emulator"
+   }
+   package {
       name = "neovim"
       description = "Chad editor"
       setup_command = "./neovim.sh"
@@ -42,16 +92,14 @@
       setup_command = "asusctl --chg-limit 80"
    },
    package {
-      name = "sddm"
-      description = "Login manager"
-      setup_command = "./login_manager.sh"
-   },
-   package {
-      name = "nvidia-dkms"
-      description = "Dynamic kernel nvidia driver"
+      name = "nvidia-open"
+      description = "Nvidia open source kernel modules. Recommended for card newer than NV160 family (Turing)."
+      setup_command = "./nvidia.sh"
       dependencies = [
 	 // I guess thi sautomatically sets the modeset and fbdev?
-	 "nvidia-utils"
+	 "nvidia-utils",
+	 // hardware video acceleration driver
+	 "liba-nvidia-driver",
       ]
    }
    

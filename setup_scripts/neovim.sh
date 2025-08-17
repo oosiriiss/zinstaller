@@ -1,7 +1,8 @@
-# $CONFIG_DIR_PATH is envvar set by the installer
+set -e
+# $CONFIG_DIR is envvar set by the installer
 
 NEOVIM_CONFIG_URL="https://github.com/oosiriiss/nvim-config"
-NEOVIM_TARGET_DIR="$CONFIG_DIR_PATH/nvim"
+NEOVIM_TARGET_DIR="$CONFIG_DIR/nvim"
 
 echo "Cloning neovim config from repository: $NEOVIM_CONFIG_URL to local directory: $NEOVIM_TARGET_DIR";
 

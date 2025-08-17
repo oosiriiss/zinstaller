@@ -120,8 +120,8 @@ pub fn setupPackages(packages: []PackageStatus, config: Config, alloc: std.mem.A
 // Assumes the package is at a setup stage and dotfiles_dir_path is a valid directory
 // Each package gets these ENV VARS
 //  Where each ENV var path is relative to the script cwd_dir
-//  - DOTFILES_DIR_PATH - path to dotfiles directory
-//  - CONFIG_DIR_PATH - path to the system .config directory
+//  - DOTFILES_DIR - path to dotfiles directory
+//  - CONFIG_DIR - path to the system .config directory
 fn setupPackage(
     package: *const PackageDescriptor,
     dotfiles_dir_path: []const u8,
@@ -143,8 +143,8 @@ fn setupPackage(
     // Setting up child env
     // As for now it overrides the parent envs - dont know if it will be a problem
     var env = std.process.EnvMap.init(alloc);
-    env.put("DOTFILES_DIR_PATH", dotfiles_dir_path) catch return false;
-    env.put("CONFIG_DIR_PATH", config_dir_path) catch return false;
+    env.put("DOTFILES_DIR", dotfiles_dir_path) catch return false;
+    env.put("CONFIG_DIR", config_dir_path) catch return false;
 
     child.cwd_dir = cwd_dir;
     child.env_map = &env;

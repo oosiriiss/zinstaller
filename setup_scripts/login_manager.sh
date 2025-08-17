@@ -1,3 +1,5 @@
+set -e
+
 echo "Enabling sddm service"
 sudo systemctl enable sddm
 

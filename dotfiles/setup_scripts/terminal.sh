@@ -15,5 +15,3 @@ chsh -s /bin/zsh
 ln ../.zshrc $HOME/
 
 ######################################## Add alacritty config here
-
-

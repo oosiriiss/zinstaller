@@ -1,4 +1,4 @@
-
+set -e
 
 NAME="oosiriiss"
 EMAIL="oosiriiss@gmail.com"
