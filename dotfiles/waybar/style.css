@@ -1,152 +1,69 @@
-/*https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling  
-
- */
+/* --- Global Styles --- */
 * {
-	font-family: "JetBrains Mono NL";
-	font-size: 12px;
-	margin: 0px;
-	padding: 0px;
-	min-height:0px;
-}
-
-window#waybar {
-	border-radius: 10px;
-	background: rgba(0,0,0,0.5);
-	/*background: linear-gradient(180deg, rgba(0, 0, 0, 0.7) 0%, rgba(0, 0, 0, 0.3) 100%);*/
-	/* box shadow going down*/
-	box-shadow: 0px 0px 10px -10px rgba(0, 0, 0, 0.5);
-}
-
-#workspaces {
-	margin: 0;
-	font-size: 5px;
-}
-
-#workspaces button {
-	border-radius: 5px;
-	color: white;
-}
-
-#workspaces button box label {
-	font-family: "Roboto";
-	font-weight:900;
-	margin: 0;
-	padding: 0px;
-}
-
-#workspaces button:not(:last-child) {
-	margin-right: 5px;
-}
-
-#workspaces button.active {
-	border-color: #aaaaaa;
-	color: #bf61ff;
-}
-
-#workspaces button.focused {
-	border-color: #bf61ff;
-}
-
-#workspaces button.hover {
-	border-color: #aaaaaa;
-	background-color: #000000;
-}
-
-#workspaces button.urgent {}
-
-.modules-left,
-.modules-center,
-.modules-right {
-
-	margin: 5px;
-	border-radius: 10px;
-	padding: 0px 8px 0px 8px;
-	background: rgba(0, 0, 0, 0.5);
-}
-
-.modules-left {
-	background: transparent;
-}
-
-.modules-center {}
-
-.modules-left {}
-
-#battery icon {
-	color: #bf61ff;
-}
-
-#battery.charging {
-	color: #a3be8c;
-}
-
-#battery.warning:not(.charging) {
-	color: #bf616a;
-}
-
-#network.disconnected {
-	color: #bf616a;
-}
-
-#clock,
-#battery,
-#network,
-#pulseaudio,
-#tray,
-#workspaces,
-#window,
-#custom-power_plan,
-#backlight {
-	border-radius: 8px;
-	color: #d8dee9;
-}
-
-#clock {
-	font-family: "JetBrains Mono NL";
-	font-size: 13px;
-	font-weight: 900;
-}
-
-#network {
-	font-weight: 600;
+   font-family: 'SF Pro Text', 'Inter', 'Segoe UI, NotoSans Nerd Font', sans-serif;
+   font-size: 13px;
+   min-height: 0;
+   padding-right: 0px;
+   padding-left: 0px;
+   padding-bottom: 0px;
+   transition: color, min-width, min-height, max-width, max-height;
+   transition-duration:200ms; 
+   padding:0;
+   margin:0;
+   color: rgb(180,180,180);
+   font-weight: 600;
 }
 
 #window {
-	font-family: "JetBrains Mono";
-	font-weight: 900;
+   padding:0;
+   margin:0;
 }
 
-#custom-power_plan.quiet {
-	color: #00aa00;
+#window widget box .image {
+   min-width:1000px;
 }
 
-#custom-power_plan.balanced {
-	color: #8888ff;
+/* --- Waybar Container --- */
+#waybar {
+   background: black;
+   color: #c6d0f5;
+   margin: 0px;
+   font-weight: 500;
+   padding: 1px 6px;
 }
 
-#custom-power_plan.performance {
-	color: #aa6600;
+#workspaces {
+   padding:0;
+   margin:0;
 }
 
-#custom-spacer {
-
-	color: #ffffff;
-
+.modules-left,
+.modules-center,
+.modules-right 
+{
 }
-#custom-notification {
-	color: #ffffff;
+
+.module {
+   background-color: rgb(12, 12, 12);
+   border: 1px solid orange;
+   border-radius: 6px;
+   padding: 0px 10px;
+   
 }
+
+
+#hardware {
+   border-radius: 6px;
+}
+
+
+#custom-powerprofile.power-saver { color:lightgreen; }
+#custom-powerprofile.balanced { color:blue; }
+#custom-powerprofile.performance{ color:red; }
+
+#battery { color:lime; }
+#battery.ok { color:lightgreen; }
+#battery.warning { color:orange; }
+#battery.critical { color:red; }
+
+#clock { color:red; }

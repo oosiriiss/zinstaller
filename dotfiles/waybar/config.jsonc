@@ -1,0 +1,246 @@
+// -*- mode: jsonc -*-
+{
+
+   // "mode":"overlay",
+   // "layer": "top", // Waybar at top layer
+   // "position": "bottom", // Waybar position (top|bottom|left|right)
+   // "height": 30, // Waybar height (to be removed for auto height)
+   // "width": 1280, // Waybar width
+   "spacing": 8, // Gaps between modules (4px)
+   // Choose the order of the modules
+   "modules-left": [
+      "hyprland/workspaces",
+   ],
+   "modules-center": [
+      "hyprland/window",
+   ],
+   "modules-right": [
+      "user",
+      "temperature",
+      "pulseaudio",
+      "privacy",
+      "network",
+      "keyboard-state",
+      "cava",
+      "bluetooth",
+      "custom/powerprofile",
+      "backlight",
+      "group/hardware",
+      "clock",
+   ],
+   "backlight": {
+      "format": "{percent}% {icon}",
+      "format-icons": ["", "", "", "", "", "", "", "", ""],
+   },
+   "backlight/slider": {
+      "format": "{percent}% {icon}",
+      "format-icons": ["", ""],
+      "min": 0,
+      "max": 100,
+      "orientation": "horizontal",
+   },
+   "battery": {
+      "bat": "BAT1",
+      "interval": 60,
+      "states": {
+	 "ok": 60,
+	 "warning": 40,
+	 "critical": 20
+      },
+      "format": "{capacity}% {icon}",
+      "format-icons": ["", "", "", "", ""],
+      // TODO :: These should be stacked and more descriptive
+      "tooltip-format": " State:   {timeTo}\r  Health: {health}%\r  Cycles: {cycles}",
+      "max-length": 25
+   },
+   // TODO :: Bluetooth setup
+   "bluetooth": {
+      // "controller": "controller1", // specify the alias of the controller if there are more than 1 on the system
+      "format": " {status}",
+      "format-disabled": "", // an empty format will hide the module
+      "format-connected": " {num_connections} connected",
+      "tooltip-format": "{controller_alias}\t{controller_address}",
+      "tooltip-format-connected": "{controller_alias}\t{controller_address}\n\n{device_enumerate}",
+      "tooltip-format-enumerate-connected": "{device_alias}\t{device_address}"
+   },
+   // TODO :: custom/cpuhistory coul dbe a nice module after clicking of the cpu
+   "cpu": {
+      "interval": 5,
+      "format": "{usage}% ",
+      "max-length": 10
+   },
+   // TODO :: Cava could be nice to look into
+   "cava": {
+      // "cava_config": "$XDG_CONFIG_HOME/cava/cava.conf",
+      "framerate": 30,
+      "autosens": 1,
+      "sensitivity": 100,
+      "bars": 14,
+      "lower_cutoff_freq": 50,
+      "higher_cutoff_freq": 10000,
+      "hide_on_silence": false,
+      // "format_silent": "quiet",
+      "method": "pulse",
+      "source": "auto",
+      "stereo": true,
+      "reverse": false,
+      "bar_delimiter": 0,
+      "monstercat": false,
+      "waves": false,
+      "noise_reduction": 0.77,
+      "input_delay": 2,
+      "format-icons": ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█" ],
+      "actions": {
+	 "on-click-right": "mode"
+      }
+   },
+   // TODO :: Style this and the calendar
+   "clock": {
+      "format": "{:%H:%M}  ",
+      "format-alt": "{:%A, %B %d, %Y (%R)} 📅 ",
+      "tooltip-format": "<tt><small>{calendar}</small></tt>",
+      "calendar": {
+	 "mode"          : "year",
+	 "mode-mon-col"  : 3,
+	 "weeks-pos"     : "right",
+	 "on-scroll"     : 1,
+	 "format": {
+	    "months":     "<span color='#ffead3'><b>{}</b></span>",
+	    "days":       "<span color='#ecc6d9'><b>{}</b></span>",
+	    "weeks":      "<span color='#99ffdd'><b>W{}</b></span>",
+	    "weekdays":   "<span color='#ffcc66'><b>{}</b></span>",
+	    "today":      "<span color='#ff6699'><b><u>{}</u></b></span>"
+	 }
+      },
+      "actions":  {
+	 "on-click-right": "mode",
+	 "on-scroll-up": "tz_up",
+	 "on-scroll-down": "tz_down",
+	 "on-scroll-up": "shift_up",
+	 "on-scroll-down": "shift_down"
+      }
+   },
+
+   // TODO :: This
+   "disk": {
+      "interval": 30,
+      "tooltip":true,
+      "format-tooltip": "{specific_free:0.2f} GB out of {specific_total:0.2f} GB available. Alternatively {free} out of {total} available",
+      "unit": "GB"
+   },
+   "hyprland/workspaces": {
+      "format": "{icon}: {windows}",
+      "format-window-separator": "",
+      "workspace-taskbar": {
+	 "enable": true,
+	 "update-active-window": true,
+	 // "format": "{icon} {title:.5}",
+	 "format": "{icon}",
+	 "icon-size": 18,
+	 // "on-click-window": "${SCRIPTS}/focus-window.sh {address} {button}"
+      }
+   },
+   "hyprland/window": {
+      "format": "{}",
+      "icon":true,
+      "icon-size":18,
+      "rewrite": {
+	 "(.*) — Mozilla Firefox": "🌎 $1",
+	 "(.*) - fish": "> [$1]"
+      },
+      "separate-outputs": true
+   },
+
+   "keyboard-state": {
+      "numlock": true,
+      "capslock": true,
+      "format": {
+	 "numlock": "N {icon}",
+	 "capslock": "C {icon}"                                                                                                                                                       
+      },
+      "format-icons": {
+	 "locked": "",
+	 "unlocked": ""
+      }
+   },
+   "memory": {
+      "interval": 30,
+      "format": "{used:0.1f}G/{total:0.1f}G "
+   },
+   // TODO :: some download and upload speeds here
+   "network": {
+      "format": "{ifname}",
+      "format-wifi": "{essid} ({signalStrength}%) ",
+      "format-ethernet": "{ipaddr}/{cidr} 󰊗",
+      "format-disconnected": "", //An empty format will hide the module.
+      "tooltip-format": "{ifname} via {gwaddr} 󰊗",
+      "tooltip-format-wifi": "{essid} ({signalStrength}%) ",
+      "tooltip-format-ethernet": "{ifname} ",
+      "tooltip-format-disconnected": "Disconnected",
+      "max-length": 50
+   },
+   "custom/powerprofile": {
+      "exec": "~/.config/waybar/scripts/power_plan.sh",
+      "format":"{text} {icon}",
+      "format-icons": {
+	 "power-saver": "",
+	 "balanced": "",
+	 "performance": "",
+      },
+      "interval": 10,
+      "signal": 8,
+      "return-type": "json",
+      "on-click": "~/.config/waybar/scripts/power_plan.sh next"
+   },
+   "pulseaudio/slider": {
+      "min": 0,
+      "max": 100,
+      "orientation": "horizontal"
+   },
+   "pulseaudio": {
+      "format": "{volume}% {icon}",
+      "format-bluetooth": "{volume}% {icon}",
+      "format-muted": "",
+      "format-icons": {
+	 "alsa_output.pci-0000_00_1f.3.analog-stereo": "",
+	 "alsa_output.pci-0000_00_1f.3.analog-stereo-muted": "",
+	 "headphone": "",
+	 "hands-free": "",
+	 "headset": "",
+	 "phone": "",
+	 "phone-muted": "",
+	 "portable": "",
+	 "car": "",
+	 "default": ["", ""]
+      },
+      "scroll-step": 1,
+      "on-click": "pavucontrol",
+      "ignored-sinks": ["Easy Effects Sink"]
+   }, "temperature": {
+      // "thermal-zone": 2,
+      // "hwmon-path": "/sys/class/hwmon/hwmon2/temp1_input",
+      // "critical-threshold": 80,
+      // "format-critical": "{temperatureC}°C ",
+      "format": "{temperatureC}°C "
+   },
+   "user": {
+      "format": "{user} (up {work_d} days ↑)",
+      "interval": 60,
+      "height": 30,
+      "width": 30,
+      "icon": true,
+   },
+   "group/hardware": {
+      "orientation":"horizontal",
+      "drawer": {
+        "transition-duration": 200,
+        "transition-left-to-right": false,
+    },
+      "modules": [
+	 "battery",
+      	 "cpu",
+         "memory",
+	 "disk",
+      ]
+   }
+}
