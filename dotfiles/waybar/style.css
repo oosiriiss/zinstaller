@@ -36,7 +36,7 @@ tooltip label {
 }
 
 
-#workspaces button {
+#workspaces button  {
    margin:0px 2px;
    padding:1px 3px;
    border-radius:6px;
@@ -48,17 +48,17 @@ tooltip label {
    color:black;
 }
 
-#workspaces .taskbar-window:hover {
-   background:coral;
-   color:black
-}
-
 #workspaces button.active {
    color:black;
    background:orange;
 }
-#workspaces button.taskbar-window {
-   margin-left: 1px;
+
+#workspaces button.active label {
+   color: #202020;
+}
+
+#workspaces .taskbar-window {
+   margin: 0 1px;
 }
 
 .modules-right box.module {
@@ -67,6 +67,39 @@ tooltip label {
    padding: 2px 8px;
 }
 
+
+#pulseaudio:not(.microphone) {
+   color:dodgerblue;
+}
+
+#pulseaudio:not(.microphone).muted {
+   color:firebrick;
+}
+
+#pulseaudio.microphone{
+   color:dodgerblue;
+}
+
+#pulseaudio.microphone.source-muted {
+   color:firebrick;
+}
+
+#keyboard-state label {
+   color:firebrick;
+}
+#keyboard-state label.locked {
+   color:darkgreen;
+}
+#keyboard-state label:first-child {
+   margin:0;
+   margin-right:4px;
+}
+
+#network.linked,
+#network.ethernet,
+#network.wifi {
+   color:lightgreen;
+}
 
 #bluetooth {
    color:rgb(180,180,180); /* match waybar text color*/
@@ -79,10 +112,9 @@ tooltip label {
    color:#32CD32;
 }
 
-
 #custom-powerprofile.power-saver { color:lightgreen; }
-#custom-powerprofile.balanced { color:blue; }
-#custom-powerprofile.performance{ color:red; }
+#custom-powerprofile.balanced { color:dodgerblue; }
+#custom-powerprofile.performance{ color:crimson; }
 
 #backlight.b10 { color: #7A451A; }
 #backlight.b20 { color: #8F5324; }
@@ -95,13 +127,31 @@ tooltip label {
 #backlight.b90 { color: #F9EEC9; }
 #backlight.b100 { color: #FFF9E8; }
 
-#battery { color:lime; }
+#battery { color:lightgreen; }
 #battery.ok { color:lightgreen; }
 #battery.warning { color:orange; }
 #battery.critical { color:red; }
 
 #hardware .hardware-child label {
    margin:0 4px;
+}
+
+#temperature{
+   color:seagreen;
+}
+#temperature.critical {
+   color:red;
+}
+
+#cpu {
+   color:dodgerblue;
+}
+
+#memory {
+   color:darkorange;
+}
+#disk {
+   color: slategrey;
 }
 
 #clock {}

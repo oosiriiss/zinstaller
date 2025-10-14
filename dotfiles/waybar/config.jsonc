@@ -9,13 +9,13 @@
    "spacing": 8, // Gaps between modules (4px)
    // Choose the order of the modules
    "modules-left": [
+      "user",
       "hyprland/workspaces",
    ],
    "modules-center": [
       "hyprland/window",
    ],
    "modules-right": [
-      "user",
       "pulseaudio",
       "pulseaudio#microphone",
       "privacy",
@@ -164,12 +164,12 @@
       "numlock": true,
       "capslock": true,
       "format": {
-	 "numlock": "N {icon}",
-	 "capslock": "C {icon}"                                                                                                                                                       
+	 "numlock": "NmLk {icon}",
+	 "capslock": "Caps {icon}"                                                                                                                                                       
       },
       "format-icons": {
-	 "locked": "",
-	 "unlocked": ""
+	 "locked": "",
+	 "unlocked": ""
       }
    },
    "memory": {
@@ -190,12 +190,11 @@
       "format": "{ifname}",
       "format-wifi": "{essid} ({signalStrength}%) ",
       "format-ethernet": "{ipaddr}/{cidr} 󰊗",
-      "format-disconnected": "", //An empty format will hide the module.
+      "format-disconnected": "Not connected 🛜🚫", //An empty format will hide the module.
       "tooltip-format": "{ifname} via {gwaddr} 󰊗",
       "tooltip-format-wifi": "{essid} ({signalStrength}%) ",
       "tooltip-format-ethernet": "{ifname} ",
       "tooltip-format-disconnected": "Disconnected",
-      "max-length": 50
    },
    "custom/powerprofile": {
       "exec": "~/.config/waybar/scripts/power_plan.sh",
@@ -237,8 +236,8 @@
    }, "temperature": {
       // "thermal-zone": 2,
       // "hwmon-path": "/sys/class/hwmon/hwmon2/temp1_input",
-      // "critical-threshold": 80,
-      // "format-critical": "{temperatureC}°C ",
+      "critical-threshold": 75,
+      "format-critical": "{temperatureC}°C ",
       "format": "{temperatureC}°C "
    },
    "user": {
@@ -257,6 +256,7 @@
     },
       "modules": [
 	 "battery",
+	 // TODO :: Submodule styling
 	 "temperature",
       	 "cpu",
          "memory",
