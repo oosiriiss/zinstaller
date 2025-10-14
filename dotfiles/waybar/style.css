@@ -8,52 +8,75 @@
    padding-bottom: 0px;
    transition: color, min-width, min-height, max-width, max-height;
    transition-duration:200ms; 
-   padding:0;
-   margin:0;
    color: rgb(180,180,180);
    font-weight: 600;
-}
-
-#window {
    padding:0;
    margin:0;
-}
-
-#window widget box .image {
-   min-width:1000px;
+   border:none;
+   box-shadow:none;
 }
 
 /* --- Waybar Container --- */
 #waybar {
    background: black;
    color: #c6d0f5;
-   margin: 0px;
    font-weight: 500;
-   padding: 1px 6px;
 }
 
-#workspaces {
-   padding:0;
-   margin:0;
+#waybar > box {
+   padding: 2px;
 }
 
-.modules-left,
-.modules-center,
-.modules-right 
-{
+tooltip {
+
 }
 
-.module {
+tooltip label {
+
+}
+
+
+#workspaces button {
+   margin:0px 2px;
+   padding:1px 3px;
+   border-radius:6px;
+   border:none;
+}
+
+#workspaces button:hover {
+   background:coral;
+   color:black;
+}
+
+#workspaces .taskbar-window:hover {
+   background:coral;
+   color:black
+}
+
+#workspaces button.active {
+   color:black;
+   background:orange;
+}
+#workspaces button.taskbar-window {
+   margin-left: 1px;
+}
+
+.modules-right box.module {
    background-color: rgb(12, 12, 12);
-   border: 1px solid orange;
-   border-radius: 6px;
-   padding: 0px 10px;
-   
+   border-radius: 10px;
+   padding: 2px 8px;
 }
 
 
-#hardware {
-   border-radius: 6px;
+#bluetooth {
+   color:rgb(180,180,180); /* match waybar text color*/
+}
+#bluetooth.on {
+   color:#00AFFF;
+}
+
+#bluetooth.connected {
+   color:#32CD32;
 }
 
 
@@ -61,9 +84,24 @@
 #custom-powerprofile.balanced { color:blue; }
 #custom-powerprofile.performance{ color:red; }
 
+#backlight.b10 { color: #7A451A; }
+#backlight.b20 { color: #8F5324; }
+#backlight.b30 { color: #A3642E; }
+#backlight.b40 { color: #B3783B; }
+#backlight.b50 { color: #C58E4A; }
+#backlight.b60 { color: #D3A55C; }
+#backlight.b70 { color: #E1BD73; }
+#backlight.b80 { color: #EDDDA0; }
+#backlight.b90 { color: #F9EEC9; }
+#backlight.b100 { color: #FFF9E8; }
+
 #battery { color:lime; }
 #battery.ok { color:lightgreen; }
 #battery.warning { color:orange; }
 #battery.critical { color:red; }
 
-#clock { color:red; }
+#hardware .hardware-child label {
+   margin:0 4px;
+}
+
+#clock {}
