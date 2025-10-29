@@ -18,10 +18,8 @@
    "modules-right": [
       "pulseaudio",
       "pulseaudio#microphone",
-      "privacy",
       "network",
       "keyboard-state",
-      "cava",
       "bluetooth",
       "custom/powerprofile",
       "backlight",
@@ -153,19 +151,15 @@
       "format": "{}",
       "icon":true,
       "icon-size":18,
-      "rewrite": {
-	 "(.*) — Mozilla Firefox": "🌎 $1",
-	 "(.*) - fish": "> [$1]"
-      },
+      "max-length":40,
       "separate-outputs": true
    },
-
    "keyboard-state": {
-      "numlock": true,
       "capslock": true,
+      "numlock":true,
       "format": {
-	 "numlock": "NmLk {icon}",
-	 "capslock": "Caps {icon}"                                                                                                                                                       
+	 "capslock": "C {icon}",                                                                                                                                                       
+	 "numlock": "N {icon}"                                                                                                                                                       
       },
       "format-icons": {
 	 "locked": "",
@@ -190,7 +184,7 @@
       "format": "{ifname}",
       "format-wifi": "{essid} ({signalStrength}%) ",
       "format-ethernet": "{ipaddr}/{cidr} 󰊗",
-      "format-disconnected": "Not connected 🛜🚫", //An empty format will hide the module.
+      "format-disconnected": "Not connected ", //An empty format will hide the module.
       "tooltip-format": "{ifname} via {gwaddr} 󰊗",
       "tooltip-format-wifi": "{essid} ({signalStrength}%) ",
       "tooltip-format-ethernet": "{ifname} ",
