@@ -1,152 +1,164 @@
-/*https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling
-https://github.com/Alexays/Waybar/wiki/Styling  
-
- */
+/* --- Global Styles --- */
 * {
-	font-family: "JetBrains Mono NL";
-	font-size: 12px;
-	margin: 0px;
-	padding: 0px;
-	min-height:0px;
+   font-family: 'SF Pro Text', 'Inter', 'Segoe UI, NotoSans Nerd Font', sans-serif;
+   font-size: 13px;
+   min-height: 0;
+   padding-right: 0px;
+   padding-left: 0px;
+   padding-bottom: 0px;
+   transition: color, min-width, min-height, max-width, max-height;
+   transition-duration:200ms; 
+   color: rgb(180,180,180);
+   font-weight: 600;
+   padding:0;
+   margin:0;
+   border:none;
+   box-shadow:none;
 }
 
-window#waybar {
-	border-radius: 10px;
-	background: rgba(0,0,0,0.5);
-	/*background: linear-gradient(180deg, rgba(0, 0, 0, 0.7) 0%, rgba(0, 0, 0, 0.3) 100%);*/
-	/* box shadow going down*/
-	box-shadow: 0px 0px 10px -10px rgba(0, 0, 0, 0.5);
+/* --- Waybar Container --- */
+#waybar {
+   background: black;
+   color: #c6d0f5;
+   font-weight: 500;
 }
 
-#workspaces {
-	margin: 0;
-	font-size: 5px;
+#waybar > box {
+   padding: 2px;
 }
 
-#workspaces button {
-	border-radius: 5px;
-	color: white;
+tooltip {
+
 }
 
-#workspaces button box label {
-	font-family: "Roboto";
-	font-weight:900;
-	margin: 0;
-	padding: 0px;
+tooltip label {
+
 }
 
-#workspaces button:not(:last-child) {
-	margin-right: 5px;
+
+#workspaces button  {
+   margin:0px 2px;
+   padding:1px 3px;
+   border-radius:6px;
+   border:none;
+}
+
+#workspaces button:hover {
+   background:coral;
+   color:black;
 }
 
 #workspaces button.active {
-	border-color: #aaaaaa;
-	color: #bf61ff;
+   color:black;
+   background:orange;
 }
 
-#workspaces button.focused {
-	border-color: #bf61ff;
+#workspaces button.active label {
+   color: #202020;
 }
 
-#workspaces button.hover {
-	border-color: #aaaaaa;
-	background-color: #000000;
+#workspaces .taskbar-window {
+   margin: 0 1px;
 }
 
-#workspaces button.urgent {}
-
-.modules-left,
-.modules-center,
-.modules-right {
-
-	margin: 5px;
-	border-radius: 10px;
-	padding: 0px 8px 0px 8px;
-	background: rgba(0, 0, 0, 0.5);
+.modules-right box.module {
+   background-color: rgb(12, 12, 12);
+   border-radius: 10px;
+   padding: 2px 8px;
 }
 
-.modules-left {
-	background: transparent;
+
+#pulseaudio:not(.microphone) {
+   color:dodgerblue;
 }
 
-.modules-center {}
-
-.modules-left {}
-
-#battery icon {
-	color: #bf61ff;
+#pulseaudio:not(.microphone).muted {
+   color:firebrick;
 }
 
-#battery.charging {
-	color: #a3be8c;
+#pulseaudio.microphone{
+   color:dodgerblue;
 }
 
-#battery.warning:not(.charging) {
-	color: #bf616a;
+#pulseaudio.microphone.source-muted {
+   color:firebrick;
 }
 
-#network.disconnected {
-	color: #bf616a;
+#keyboard-state {
+   padding-left:0;
+   padding-right:0;
+   margin:0;
 }
 
-#clock,
-#battery,
-#network,
-#pulseaudio,
-#tray,
-#workspaces,
-#window,
-#custom-power_plan,
-#backlight {
-	border-radius: 8px;
-	color: #d8dee9;
+#keyboard-state label {
+   color:firebrick;
+}
+#keyboard-state label.locked {
+   color:darkgreen;
+}
+#keyboard-state label:first-child {
+   margin:0;
+   padding:0;
+   margin-right:4px;
 }
 
-#clock {
-	font-family: "JetBrains Mono NL";
-	font-size: 13px;
-	font-weight: 900;
+#network.linked,
+#network.ethernet,
+#network.wifi {
+   color:lightgreen;
 }
 
-#network {
-	font-weight: 600;
+#bluetooth {
+   color:rgb(180,180,180); /* match waybar text color*/
+}
+#bluetooth.on {
+   color:#00AFFF;
 }
 
-#window {
-	font-family: "JetBrains Mono";
-	font-weight: 900;
+#bluetooth.connected {
+   color:#32CD32;
 }
 
-#custom-power_plan.quiet {
-	color: #00aa00;
+#custom-powerprofile.power-saver { color:lightgreen; }
+#custom-powerprofile.balanced { color:dodgerblue; }
+#custom-powerprofile.performance{ color:crimson; }
+
+#backlight.b10 { color: #7A451A; }
+#backlight.b20 { color: #8F5324; }
+#backlight.b30 { color: #A3642E; }
+#backlight.b40 { color: #B3783B; }
+#backlight.b50 { color: #C58E4A; }
+#backlight.b60 { color: #D3A55C; }
+#backlight.b70 { color: #E1BD73; }
+#backlight.b80 { color: #EDDDA0; }
+#backlight.b90 { color: #F9EEC9; }
+#backlight.b100 { color: #FFF9E8; }
+
+#battery { color:lightgreen; }
+#battery.ok { color:lightgreen; }
+#battery.warning { color:orange; }
+#battery.critical { color:red; }
+
+#hardware .hardware-child label {
+   margin:0 4px;
 }
 
-#custom-power_plan.balanced {
-	color: #8888ff;
+#temperature{
+   color:seagreen;
+}
+#temperature.critical {
+   color:red;
 }
 
-#custom-power_plan.performance {
-	color: #aa6600;
+#cpu {
+   color:dodgerblue;
 }
 
-#custom-spacer {
-
-	color: #ffffff;
-
+#memory {
+   color:darkorange;
 }
-#custom-notification {
-	color: #ffffff;
+#disk {
+   color: slategrey;
 }
+
+#clock {}
