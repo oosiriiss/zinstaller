@@ -1,5 +1,6 @@
 const std = @import("std");
 const openFile = @import("util.zig").openFileWrite;
+const builtin = @import("builtin");
 
 const RED = "\x1b[31m";
 const GREEN = "\x1b[32m";
@@ -9,12 +10,16 @@ const MAGENTA = "\x1b[35m";
 const CYAN = "\x1b[36m";
 const RESET = "\x1b[0m";
 
-const writer = if (@import("builtin").is_test) std.io.null_writer.any() else std.io.getStdOut().writer().any();
 // for convenience
-var global_logger: Logger = Logger.init(writer);
+var global_logger: Logger = undefined;
+
+pub fn initializeGlobalLogger() void {
+    global_logger.init();
+}
 
 // Logger must be initialized with initGlobalLogger
 pub fn getGlobalLogger() *Logger {
+    initializeGlobalLogger();
     return &global_logger;
 }
 
@@ -30,20 +35,30 @@ const Level = enum {
 };
 
 pub const Logger = struct {
-    stdout: std.io.AnyWriter,
+    stdout: *std.io.Writer,
+    stdout_file_writer: std.fs.File.Writer,
+    log_writer: std.io.Writer,
     log_file: ?std.fs.File,
+
+    stdout_buffer: [512]u8,
+    file_buffer: [512]u8,
+
     next_file_only: bool,
     next_stdout_only: bool,
 
     const Self = @This();
 
-    pub fn init(stdout_writer: std.io.AnyWriter) Self {
-        return .{
-            .stdout = stdout_writer,
-            .log_file = null,
-            .next_stdout_only = false,
-            .next_file_only = false,
-        };
+    pub fn init(self: *Self) void {
+        self.log_file = null;
+        self.next_file_only = false;
+        self.next_stdout_only = false;
+
+        self.stdout_buffer = undefined;
+        self.file_buffer = undefined;
+
+        self.stdout_file_writer = std.fs.File.stdout().writer(&self.stdout_buffer);
+
+        self.stdout = &self.stdout_file_writer.interface;
     }
 
     pub fn deinit(self: *Self) void {
@@ -60,6 +75,9 @@ pub const Logger = struct {
 
         const file = try openFile(log_file_path);
         self.log_file = file;
+
+        @memset(&self.file_buffer, 0);
+        self.log_writer = self.log_file.?.writer(&self.file_buffer).interface;
 
         self.info("Logging file intialized {s}", .{log_file_path});
     }
@@ -94,6 +112,10 @@ pub const Logger = struct {
     }
 
     fn log(self: *Self, comptime level: Level, comptime fmt: []const u8, args: anytype) void {
+        if (comptime builtin.is_test) {
+            return;
+        }
+
         const stdout_fmt = comptime createStdOutFmt(level, fmt);
         const file_fmt = comptime createFileFmt(level, fmt);
 
@@ -103,12 +125,10 @@ pub const Logger = struct {
             };
         }
 
-        if (!self.next_stdout_only) {
-            if (self.log_file) |f| {
-                f.writer().print(file_fmt, args) catch |e| {
-                    std.debug.print("Writing to file failed: (err: {any})", .{e});
-                };
-            }
+        if (!self.next_stdout_only and self.log_file != null) {
+            self.log_writer.print(file_fmt, args) catch |e| {
+                std.debug.print("Writing to file failed: (err: {any})", .{e});
+            };
         }
 
         self.resetExclusiveLog();

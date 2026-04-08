@@ -13,7 +13,7 @@ const cleanCache = @import("package_status.zig").cleanCache;
 const downloadPackages = @import("setup_packages.zig").downloadPackages;
 const setupPackages = @import("setup_packages.zig").setupPackages;
 // Logger
-const initializeLog = @import("logger.zig").initGlobalLogger;
+const initializeLog = @import("logger.zig").initializeGlobalLogger;
 const shutdownLog = @import("logger.zig").shutdownGlobalLogger;
 const log = @import("logger.zig").getGlobalLogger;
 
@@ -34,13 +34,18 @@ pub fn main() !void {
     // POSSIBLE_TODO :: setup commands are sometimes called scripts which may be confusing.
     // TODO :: I mean i cna switch to c_allocator instead o fstd.heap.page_allocator but i am having severe skill issue linking libc
     // Maybe add some on startup script and on finished script for things like regenerate grub config etc.
-    // TODO :: 
+    // TODO ::
     // add section in packages list for packages that will be included in download/setup no matter what and for optional (normal) packages
     // POSSIBLE_TODO :: Is there really a need to copy the default string values in ast.initObjectFromFields? Possible solution is to introduce getters and make the field nullable and then if it is null just return the default value. but i am not sure if i like this.
     const CONFIG_PATH = "./installer.cfg";
 
+    var stdout_buffer: [512]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    const stdout = &stdout_writer.interface;
+
+    initializeLog();
     // The logger is initialized automatically.
-    // shutdown should only will happend here.
+    // shutdown should only happen here.
     defer shutdownLog();
 
     // All allocations done with arena so no real need for memory cleanup
@@ -67,7 +72,7 @@ pub fn main() !void {
     const selected_packages = if (cache) |c|
         selectPackagesFromCache(packages, &c.package_status_map)
     else
-        try selectPackages(packages, std.io.getStdOut().writer().any());
+        try selectPackages(packages, alloc, stdout);
 
     const final_packages = try finalizePackages(selected_packages, alloc);
     defer alloc.free(final_packages);
@@ -102,5 +107,6 @@ pub fn main() !void {
 }
 
 test {
+    initializeLog();
     std.testing.refAllDecls(@This());
 }

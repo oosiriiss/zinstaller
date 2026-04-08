@@ -95,7 +95,10 @@ test "Loading config from file" {
     defer dir.cleanup();
     var file = try dir.dir.createFile("test_config", .{ .read = true });
 
-    try file.writer().print(
+    var w = file.writer(&.{});
+    var writer = &w.interface;
+
+    try writer.print(
         \\  config {{
         \\      scripts_dir = "./scripts";
         \\      packages_file = "./packages";

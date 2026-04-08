@@ -3,7 +3,7 @@ const log = @import("logger.zig").getGlobalLogger;
 
 pub const IndentPrinter = struct {
     indent: u8,
-    writer: std.io.AnyWriter,
+    writer: *std.io.Writer,
 
     const Self = @This();
 
@@ -27,13 +27,9 @@ pub const IndentPrinter = struct {
     }
 };
 
-pub fn print(comptime format: []const u8, args: anytype) !void {
-    try std.io.getStdOut().writer().print(format, args);
-}
-
-pub fn printCharN(c: u8, n: usize, writer: anytype) !void {
+pub fn printCharN(c: u8, n: usize, writer: *std.io.Writer) !void {
     for (0..n) |_|
-        _ = try writer.print("{c}", .{c});
+        try writer.print("{c}", .{c});
 }
 
 // returns a slice without leading and trailing whitespace
@@ -54,12 +50,16 @@ pub fn clipWhitespace(buf: []const u8) []const u8 {
 }
 
 pub fn readLine(buffer: []u8) ![]u8 {
-    const stdin = std.io.getStdIn().reader();
+    var stdin = std.fs.File.stdin().reader(buffer).interface;
 
-    if (stdin.readUntilDelimiter(buffer, '\n')) |line| {
-        if (line.len > 0 and line[line.len - 1] == '\r')
-            return line[0 .. line.len - 1];
-        return line;
+    if (stdin.takeDelimiter('\n')) |lineOptional| {
+        if (lineOptional) |line| {
+            if (line.len > 0 and line[line.len - 1] == '\r')
+                return line[0 .. line.len - 1];
+            return line;
+        } else {
+            return error.EOF;
+        }
     } else |err| {
         return err;
     }
@@ -140,19 +140,24 @@ pub fn readAllAlloc(file: std.fs.File, alloc: std.mem.Allocator) ![]const u8 {
 }
 
 pub fn readWholeStreamAlloc(file: std.fs.File, alloc: std.mem.Allocator) ![]const u8 {
-    var reader = file.reader();
-    var buffer = std.ArrayList(u8).init(alloc);
-    defer buffer.deinit();
+    var file_buf: [4096]u8 = undefined;
+    var reader = file.reader(&file_buf).interface;
 
-    var buf: [1024]u8 = undefined;
+    var buffer = try std.ArrayList(u8).initCapacity(alloc, 1024);
+    defer buffer.deinit(alloc);
+
+    var data_buffer: [1024]u8 = undefined;
 
     while (true) {
-        const read = reader.read(&buf) catch break;
+        reader.readSliceAll(&data_buffer) catch break;
+        const read = data_buffer.len;
         if (read == 0) break;
-        try buffer.appendSlice(buf[0..read]);
+        try buffer.appendSlice(alloc, data_buffer[0..read]);
     }
 
-    return try buffer.toOwnedSlice();
+    return try buffer.toOwnedSlice(
+        alloc,
+    );
 }
 
 pub fn runSilentCommand(argv: []const []const u8) !void {
@@ -202,4 +207,3 @@ pub fn expandTilde(path: []const u8, alloc: std.mem.Allocator) ![]const u8 {
     }
     return alloc.dupe(u8, path);
 }
-

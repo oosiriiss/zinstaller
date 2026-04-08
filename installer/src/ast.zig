@@ -56,7 +56,9 @@ pub const Value = union(enum) {
     }
 
     pub fn debugPrint(self: Self) void {
-        var printer = util.IndentPrinter{ .indent = 0, .writer = std.io.getStdErr().writer().any() };
+        var stderr = std.fs.File.stderr().writer(&.{}).interface;
+
+        var printer = util.IndentPrinter{ .indent = 0, .writer = &stderr };
         self.debugPrintHelper(&printer);
     }
     fn debugPrintHelper(self: Self, printer: *util.IndentPrinter) void {
@@ -158,8 +160,8 @@ pub const Parser = struct {
     fn parseArray(self: *Self) (ParseError || std.mem.Allocator.Error)![]Value {
         self.expectSymbol(.square_left) catch return ParseArrayError.MissingOpeningBracket;
 
-        var items = std.ArrayList(Value).init(self.alloc);
-        errdefer items.deinit();
+        var items = try std.ArrayList(Value).initCapacity(self.alloc, 5);
+        errdefer items.deinit(self.alloc);
 
         while (self.lexer.peek()) |token| {
             if (token == .symbol) {
@@ -173,11 +175,11 @@ pub const Parser = struct {
 
             const value = try self.parseValue();
 
-            try items.append(value);
+            try items.append(self.alloc, value);
         }
 
         self.expectSymbol(.square_right) catch return ParseArrayError.MissingOpeningBracket;
-        return try items.toOwnedSlice();
+        return try items.toOwnedSlice(self.alloc);
     }
 
     // Copies the identifier into the object name field
@@ -320,24 +322,24 @@ pub const Parser = struct {
 
     // handles special characters in strings
     fn handleStringLiteral(str: []const u8, alloc: std.mem.Allocator) (std.mem.Allocator.Error)!Value {
-        var parsed = std.ArrayList(u8).init(alloc);
-        defer parsed.deinit();
+        var parsed = try std.ArrayList(u8).initCapacity(alloc, str.len);
+        defer parsed.deinit(alloc);
 
         var i: usize = 0;
         while (i < str.len) : (i += 1) {
             const c = str[i];
             if (c == '\\' and i < str.len - 1) {
                 const special = createSpecialChar(str[i + 1]);
-                try parsed.append(special);
+                try parsed.append(alloc, special);
                 // skipping the special char
                 i = i + 1;
             } else {
-                try parsed.append(c);
+                try parsed.append(alloc, c);
             }
         }
 
         return Value{
-            .string = try parsed.toOwnedSlice(),
+            .string = try parsed.toOwnedSlice(alloc),
         };
     }
 

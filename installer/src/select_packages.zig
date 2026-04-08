@@ -32,7 +32,7 @@ pub fn selectPackagesFromCache(packages: []PackageDescriptor, map: *const std.St
     return packages[0..current_index];
 }
 // Modifies the origina slice and puts the selected packages at the beginning (and returns the new slice)
-pub fn selectPackages(packages: []PackageDescriptor, writer: std.io.AnyWriter) ![]PackageDescriptor {
+pub fn selectPackages(packages: []PackageDescriptor, alloc: std.mem.Allocator, writer: *std.io.Writer) ![]PackageDescriptor {
     for (packages, 1..) |p, i| {
         try writer.print("{d}. ", .{i});
         try p.formatShort(writer);
@@ -40,11 +40,12 @@ pub fn selectPackages(packages: []PackageDescriptor, writer: std.io.AnyWriter) !
     }
 
     while (true) {
-        try util.print("All packages are included by default.", .{});
-        try util.print("Please enter numbers or inclusive ranges of the packages to exclude (i.e \"1 2 3 5-8 19 72 420 78_000 13 \")\n", .{});
-        try util.print(">>> ", .{});
+        try writer.print("All packages are included by default.", .{});
+        try writer.print("Please enter numbers or inclusive ranges of the packages to exclude (i.e \"1 2 3 5-8 19 72 420 78_000 13 \")\n", .{});
+        try writer.print(">>> ", .{});
+        try writer.flush();
 
-        const numbers = askForPackageNumbers() catch continue;
+        const numbers = askForPackageNumbers(alloc, writer) catch continue;
 
         validateSelectedPackages(numbers.items, packages.len) catch {
             if (cli.askConfirmation("Validation failed, do you want to redo selection? (All invalid choices will be ignored)", .{}))
@@ -120,7 +121,7 @@ fn isSelected(package_number: usize, tokens: []const InputToken) bool {
     return false;
 }
 
-fn askForPackageNumbers() !std.ArrayList(InputToken) {
+fn askForPackageNumbers(alloc: std.mem.Allocator, stdout: *std.io.Writer) !std.ArrayList(InputToken) {
     var buf: [256]u8 = undefined;
 
     const line_raw = util.readLine(&buf) catch |err| {
@@ -130,23 +131,24 @@ fn askForPackageNumbers() !std.ArrayList(InputToken) {
 
     const input = util.clipWhitespace(line_raw);
 
-    const tokens = parseSelectionInput(input) catch |err| {
+    var tokens = parseSelectionInput(input, alloc) catch |err| {
         log().err("There was an error when parsing input (err:{})", .{err});
         return err;
     };
 
     if (tokens.items.len <= 0) {
-        tokens.deinit();
-        util.print("Please try again anda insert valid package numbers.\n", .{}) catch {};
+        tokens.deinit(alloc);
+        try stdout.print("Please try again anda insert valid package numbers.\n", .{});
+        try stdout.flush();
         return error.InvalidInput;
     }
 
     return tokens;
 }
 
-fn parseSelectionInput(input: []const u8) (std.mem.Allocator.Error)!std.ArrayList(InputToken) {
-    var tokens = std.ArrayList(InputToken).init(std.heap.page_allocator);
-    errdefer tokens.deinit();
+fn parseSelectionInput(input: []const u8, alloc: std.mem.Allocator) (std.mem.Allocator.Error)!std.ArrayList(InputToken) {
+    var tokens = try std.ArrayList(InputToken).initCapacity(alloc, input.len / 10);
+    errdefer tokens.deinit(alloc);
 
     var tokenizer = std.mem.tokenizeScalar(u8, input, ' ');
 
@@ -156,7 +158,7 @@ fn parseSelectionInput(input: []const u8) (std.mem.Allocator.Error)!std.ArrayLis
             continue;
         };
 
-        try tokens.append(parsed);
+        try tokens.append(alloc, parsed);
     }
 
     return tokens;

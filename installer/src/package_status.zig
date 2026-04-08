@@ -56,7 +56,7 @@ const CacheEntry = struct {
         alloc.free(self.name);
     }
 
-    pub fn serialize(self: Self, writer: std.fs.File.Writer) !void {
+    pub fn serialize(self: Self, writer: *std.io.Writer) !void {
         try writer.print("{s} {{ name= \"{s}\"; status = \"{s}\"; }}", .{
             WRITER_IDENTIFIER,
             self.name,
@@ -82,7 +82,10 @@ pub fn createPackageStatusSlice(packages: []const PackageDescriptor, alloc: std.
 pub fn saveCache(cache_file_path: []const u8, statuses: []const PackageStatus) !void {
     var file = try util.openFileWrite(cache_file_path);
     defer file.close();
-    var file_writer = file.writer();
+
+    var buffer: [4096]u8 = undefined;
+
+    var file_writer = file.writer(&buffer).interface;
 
     try file_writer.print("[\n", .{});
 
@@ -90,11 +93,12 @@ pub fn saveCache(cache_file_path: []const u8, statuses: []const PackageStatus) !
     // Previous method of storign it as assignemnts caused errors when parsing.
     for (statuses) |status| {
         try file_writer.print("\t", .{});
-        try (CacheEntry{ .name = status.package.name, .status = status.status }).serialize(file_writer);
+        try (CacheEntry{ .name = status.package.name, .status = status.status }).serialize(&file_writer);
         try file_writer.print(",\n", .{});
     }
 
     try file_writer.print("]", .{});
+    try file_writer.flush();
 }
 
 // Loads all previous packages statuses from cache file

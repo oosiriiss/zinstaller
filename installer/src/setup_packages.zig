@@ -11,13 +11,13 @@ pub fn printSelected(packages: []const PackageDescriptor, alloc: std.mem.Allocat
     const SETUP_FOUND_STR = "(Setup found)";
     const SETUP_NOT_FOUND_STR = "(No setup)";
 
-    var str = std.ArrayList(u8).init(alloc);
-    defer str.deinit();
+    var str = try std.ArrayList(u8).initCapacity(alloc, packages.len * 15);
+    defer str.deinit(alloc);
 
     for (packages, 1..) |p, num| {
         const after_str = if (p.setup_command == null) SETUP_NOT_FOUND_STR else SETUP_FOUND_STR;
         const line = try std.fmt.allocPrint(alloc, " {d}. {s} {s}\n", .{ num, p.name, after_str });
-        try str.appendSlice(line);
+        try str.appendSlice(alloc, line);
         alloc.free(line);
     }
     log().info("These packages will be downloaded: \n{s}", .{str.items});
@@ -180,18 +180,16 @@ fn setupPackage(
     return false;
 }
 
-
-
 fn createCommandArguments(terminate_on_fail: bool, alloc: std.mem.Allocator) ![]const u8 {
-    var buf = std.ArrayList(u8).init(alloc);
-    defer buf.deinit();
-    try buf.append('-');
-    try buf.append('c');
+    var buf = try std.ArrayList(u8).initCapacity(alloc, 10);
+    defer buf.deinit(alloc);
+    try buf.append(alloc, '-');
+    try buf.append(alloc, 'c');
     if (terminate_on_fail) {
-        try buf.append('e');
+        try buf.append(alloc, 'e');
     }
 
-    return try buf.toOwnedSlice();
+    return try buf.toOwnedSlice(alloc);
 }
 
 fn assertYayExists() !void {

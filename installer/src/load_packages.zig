@@ -44,7 +44,7 @@ pub const PackageDescriptor = struct {
         }
         std.debug.print("])", .{});
     }
-    pub fn formatShort(self: Self, writer: std.io.AnyWriter) !void {
+    pub fn formatShort(self: Self, writer: *std.io.Writer) !void {
         const desc = if (self.description) |d| d else "???";
 
         try writer.print("{s:^10} - {s:<20} - Dependencies {d}", .{ self.name, desc, self.countDependencies() });
@@ -113,14 +113,14 @@ pub fn loadPackages(packages_file_path: []const u8, alloc: std.mem.Allocator) ![
 }
 
 fn createPackages(ast_tree: []ast.Value, alloc: std.mem.Allocator) (PackageError || std.mem.Allocator.Error)![]PackageDescriptor {
-    var arr = std.ArrayList(PackageDescriptor).init(alloc);
-    errdefer arr.deinit();
+    var arr = try std.ArrayList(PackageDescriptor).initCapacity(alloc, ast_tree.len);
+    errdefer arr.deinit(alloc);
 
     for (ast_tree) |object| {
-        try arr.append(try createPackage(object, alloc));
+        try arr.append(alloc, try createPackage(object, alloc));
     }
 
-    return arr.toOwnedSlice();
+    return arr.toOwnedSlice(alloc);
 }
 
 fn createPackageFromString(v: ast.Value, alloc: std.mem.Allocator) (PackageError || std.mem.Allocator.Error)!PackageDescriptor {
