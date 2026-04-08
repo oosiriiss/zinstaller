@@ -85,20 +85,21 @@ pub fn saveCache(cache_file_path: []const u8, statuses: []const PackageStatus) !
 
     var buffer: [4096]u8 = undefined;
 
-    var file_writer = file.writer(&buffer).interface;
+    var file_fs_writer = file.writer(&buffer);
+    var file_io_writer = &file_fs_writer.interface;
 
-    try file_writer.print("[\n", .{});
+    try file_io_writer.print("[\n", .{});
 
     // Cache has to be stored as objects to allow package names with '-' sign.
     // Previous method of storign it as assignemnts caused errors when parsing.
     for (statuses) |status| {
-        try file_writer.print("\t", .{});
-        try (CacheEntry{ .name = status.package.name, .status = status.status }).serialize(&file_writer);
-        try file_writer.print(",\n", .{});
+        try file_io_writer.print("\t", .{});
+        try (CacheEntry{ .name = status.package.name, .status = status.status }).serialize(file_io_writer);
+        try file_io_writer.print(",\n", .{});
     }
 
-    try file_writer.print("]", .{});
-    try file_writer.flush();
+    try file_io_writer.print("]", .{});
+    try file_io_writer.flush();
 }
 
 // Loads all previous packages statuses from cache file
@@ -107,7 +108,7 @@ pub fn loadCache(cache_file_path: []const u8, alloc: std.mem.Allocator) !?Cache 
     var file = util.openFileReadonly(cache_file_path) catch return null;
     defer file.close();
 
-    if (!cli.askConfirmation("Cache file found ({s}). do you want to resume configuration?\n", .{cache_file_path})) {
+    if (!cli.askConfirmation("Cache file found ({s}). do you want to resume configuration?", .{cache_file_path})) {
         // cleaning it just because i can, it'll be overriden anyway
         cleanCache(cache_file_path) catch return null;
     }

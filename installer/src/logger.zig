@@ -38,6 +38,7 @@ pub const Logger = struct {
     stdout: *std.io.Writer,
     stdout_file_writer: std.fs.File.Writer,
     log_writer: std.io.Writer,
+    log_file_writer: std.fs.File.Writer,
     log_file: ?std.fs.File,
 
     stdout_buffer: [512]u8,
@@ -56,7 +57,7 @@ pub const Logger = struct {
         self.stdout_buffer = undefined;
         self.file_buffer = undefined;
 
-        self.stdout_file_writer = std.fs.File.stdout().writer(&self.stdout_buffer);
+        self.stdout_file_writer = std.fs.File.stdout().writer(&.{});
 
         self.stdout = &self.stdout_file_writer.interface;
     }
@@ -76,8 +77,8 @@ pub const Logger = struct {
         const file = try openFile(log_file_path);
         self.log_file = file;
 
-        @memset(&self.file_buffer, 0);
-        self.log_writer = self.log_file.?.writer(&self.file_buffer).interface;
+        self.log_file_writer = self.log_file.?.writer(&.{});
+        self.log_writer = self.log_file_writer.interface;
 
         self.info("Logging file intialized {s}", .{log_file_path});
     }

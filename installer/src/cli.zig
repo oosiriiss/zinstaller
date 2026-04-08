@@ -6,13 +6,13 @@ pub fn askConfirmation(comptime msg: []const u8, args: anytype) bool {
 
     var buf: [64]u8 = undefined;
 
-    var stdoutBuffer: [128]u8 = undefined;
-    var stdout = std.fs.File.stdout().writer(&stdoutBuffer).interface;
+    var stdout_writer = std.fs.File.stdout().writer(&.{});
+    var stdout = &stdout_writer.interface;
 
     while (true) {
-        stdout.print(msg, args) catch continue;
-        stdout.print("(y/n)", .{}) catch continue;
-        stdout.flush() catch continue;
+        stdout.print(msg, args) catch return false;
+        stdout.print(" (y/n)\n>>> ", .{}) catch return false;
+        stdout.flush() catch return false;
 
         if (util.readLine(&buf)) |lineRaw| {
             const lowered_line = std.ascii.lowerString(&buf, lineRaw);

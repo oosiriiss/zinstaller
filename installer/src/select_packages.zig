@@ -131,6 +131,10 @@ fn askForPackageNumbers(alloc: std.mem.Allocator, stdout: *std.io.Writer) !std.A
 
     const input = util.clipWhitespace(line_raw);
 
+    if (input.len == 0) {
+        return try std.ArrayList(InputToken).initCapacity(alloc, 0);
+    }
+
     var tokens = parseSelectionInput(input, alloc) catch |err| {
         log().err("There was an error when parsing input (err:{})", .{err});
         return err;
@@ -138,7 +142,7 @@ fn askForPackageNumbers(alloc: std.mem.Allocator, stdout: *std.io.Writer) !std.A
 
     if (tokens.items.len <= 0) {
         tokens.deinit(alloc);
-        try stdout.print("Please try again anda insert valid package numbers.\n", .{});
+        try stdout.print("Please try again and insert valid package numbers.\n", .{});
         try stdout.flush();
         return error.InvalidInput;
     }

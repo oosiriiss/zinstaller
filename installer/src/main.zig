@@ -39,8 +39,7 @@ pub fn main() !void {
     // POSSIBLE_TODO :: Is there really a need to copy the default string values in ast.initObjectFromFields? Possible solution is to introduce getters and make the field nullable and then if it is null just return the default value. but i am not sure if i like this.
     const CONFIG_PATH = "./installer.cfg";
 
-    var stdout_buffer: [512]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    var stdout_writer = std.fs.File.stdout().writer(&.{});
     const stdout = &stdout_writer.interface;
 
     initializeLog();
@@ -107,6 +106,5 @@ pub fn main() !void {
 }
 
 test {
-    initializeLog();
     std.testing.refAllDecls(@This());
 }

@@ -40,17 +40,26 @@ pub fn clipWhitespace(buf: []const u8) []const u8 {
     var start: usize = 0;
     var end: usize = buf.len - 1;
 
-    while (std.ascii.isWhitespace(buf[start]))
+    while (start < buf.len and std.ascii.isWhitespace(buf[start])) {
+        if (start >= end) {
+            return &.{};
+        }
         start = start + 1;
+    }
 
-    while (std.ascii.isWhitespace(buf[end]))
+    while (std.ascii.isWhitespace(buf[end])) {
+        if (end <= start) {
+            return &.{};
+        }
         end = end - 1;
+    }
 
     return buf[start .. end + 1];
 }
 
 pub fn readLine(buffer: []u8) ![]u8 {
-    var stdin = std.fs.File.stdin().reader(buffer).interface;
+    var stdin_reader = std.fs.File.stdin().reader(buffer);
+    var stdin = &stdin_reader.interface;
 
     if (stdin.takeDelimiter('\n')) |lineOptional| {
         if (lineOptional) |line| {

@@ -56,9 +56,10 @@ pub const Value = union(enum) {
     }
 
     pub fn debugPrint(self: Self) void {
-        var stderr = std.fs.File.stderr().writer(&.{}).interface;
+        var stderr_writer = std.fs.File.stderr().writer(&.{});
+        const stderr = &stderr_writer.interface;
 
-        var printer = util.IndentPrinter{ .indent = 0, .writer = &stderr };
+        var printer = util.IndentPrinter{ .indent = 0, .writer = stderr };
         self.debugPrintHelper(&printer);
     }
     fn debugPrintHelper(self: Self, printer: *util.IndentPrinter) void {
