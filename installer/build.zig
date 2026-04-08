@@ -7,14 +7,18 @@ pub fn build(b: *std.Build) void {
 
     const exe = b.addExecutable(.{
         .name = "installer",
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-        // For std.heap.c_allocator
-        .link_libc = true,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        }),
     });
 
     b.installArtifact(exe);
+
+    const exe_check = b.step("check", "Check if the app compiles");
+    exe_check.dependOn(&exe.step);
 
     const run_cmd = b.addRunArtifact(exe);
 
@@ -28,11 +32,13 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     const exe_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-        // For std.heap.c_allocator
-        .link_libc = true,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            // For std.heap.c_allocator
+            .link_libc = true,
+        }),
     });
 
     exe_unit_tests.linkLibC();
