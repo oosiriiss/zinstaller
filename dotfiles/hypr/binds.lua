@@ -25,17 +25,17 @@ hl.bind(mainMod .. " + SHIFT + S", hl.dsp.window.move({ workspace = "special:mag
 
 
 hl.bind("XF86AudioRaiseVolume",
-	hl.dsp.exec_cmd("~/.config/waybar/scripts/volume.sh vu", { locked = true, repeating = true }))
+	hl.dsp.exec_cmd("~/.config/waybar/scripts/volume.sh vu"), { locked = true, repeating = true })
 hl.bind("XF86AudioLowerVolume",
-	hl.dsp.exec_cmd("~/.config/waybar/scripts/volume.sh vd", { locked = true, repeating = true }))
+	hl.dsp.exec_cmd("~/.config/waybar/scripts/volume.sh vd"), { locked = true, repeating = true })
 
 hl.bind("XF86AudioMute",
-	hl.dsp.exec_cmd("~/.config/waybar/scripts/volume.sh mt", { locked = true, repeating = false }))
+	hl.dsp.exec_cmd("~/.config/waybar/scripts/volume.sh mt"), { locked = true, repeating = false })
 hl.bind("XF86AudioMicMute",
-	hl.dsp.exec_cmd("~/.config/waybar/scripts/microphone.sh mt", { locked = true, repeating = false }))
+	hl.dsp.exec_cmd("~/.config/waybar/scripts/microphone.sh mt"), { locked = true, repeating = false })
 
 
 hl.bind("XF86MonBrightnessDown",
-	hl.dsp.exec_cmd("brightnessctl s 1%-", { locked = true, repeating = true }))
+	hl.dsp.exec_cmd("brightnessctl s 1%-"), { locked = true, repeating = true })
 hl.bind("XF86MonBrightnessUp",
-	hl.dsp.exec_cmd("brightnessctl s +1%", { locked = true, repeating = true }))
+	hl.dsp.exec_cmd("brightnessctl s +1%"), { locked = true, repeating = true })
